@@ -36,8 +36,8 @@ přeskočí. Kontrola, že v kopiích nezůstal telefon ani e-mail, běží vžd
 
 ## Nová ukázka
 
-1. Ulož stránku: `python -m jobagent sample <url> --name <název>` a soubor
-   přesuň do `samples/private/`.
+1. Ulož stránku: `python -m jobagent sample <url> --name <název>`. Uloží se
+   rovnou do `samples/private/`, mimo git.
 2. Přidej ho do `SPEC` v `tools/anonymize_samples.py` a případně doplň mapu
    náhrad a `KEEP_PHRASES`.
 3. Spusť `python tools/anonymize_samples.py` a `python -m unittest`.

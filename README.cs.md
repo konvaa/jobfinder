@@ -95,7 +95,7 @@ python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem
 python -m jobagent vysvetli soubor.html  :: totéž offline nad uloženou stránkou
-python -m jobagent sample <url>        :: uloží HTML stránky (podklad pro parser a testy)
+python -m jobagent sample <url>        :: uloží HTML stránky do samples\private\ (není v gitu)
 python -m unittest -v                  :: testy (offline)
 ```
 

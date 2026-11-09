@@ -37,7 +37,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dry-run", action="store_true", help="nic neposílat, uložit e-mail jako HTML a otevřít ho")
     run.add_argument("--no-open", action="store_true", help="u --dry-run neotvírat prohlížeč")
 
-    sample = sub.add_parser("sample", help="uložit HTML stránky do samples/ (podklad pro parser a testy)")
+    sample = sub.add_parser(
+        "sample",
+        help="uložit HTML stránky do samples/private/ (podklad pro parser a testy, není v gitu)",
+    )
     sample.add_argument("url")
     sample.add_argument("--name", help="název souboru bez přípony (jinak se odvodí z URL)")
 
@@ -125,13 +128,15 @@ def cmd_sample(args: argparse.Namespace) -> int:
         log.error("%s", exc)
         return 1
     name = args.name or _sample_name(args.url)
-    folder = paths.samples_dir()
+    folder = paths.private_samples_dir()
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{name}.html"
     # Na první řádek zdroj a datum: za měsíc nikdo neví, odkud soubor je.
     header = f"<!-- Zdroj: {args.url} | konečná URL: {response.url} | uloženo {datetime.now():%Y-%m-%d %H:%M} -->\n"
     path.write_text(header + response.text, encoding="utf-8")
     log.info("Uloženo: %s (%d znaků)", path, len(response.text))
+    log.info("Skutečná stránka, do gitu nepatří. Pro testy z ní udělej anonymizovanou kopii: "
+             "tools/anonymize_samples.py (viz samples/README.md).")
     return 0
 
 

@@ -80,7 +80,7 @@ python -m jobagent run --dry-run          :: full run without sending; opens the
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet
-python -m jobagent sample <url>           :: save a page as HTML (material for parsers and tests)
+python -m jobagent sample <url>           :: save a page as HTML to samples/private/ (not tracked by git)
 python -m unittest -v                     :: tests (offline)
 ```
 

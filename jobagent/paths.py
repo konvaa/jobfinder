@@ -54,6 +54,17 @@ def samples_dir() -> Path:
     return app_dir() / "samples"
 
 
+def private_samples_dir() -> Path:
+    """Sem ukládá `jobagent sample` (v .gitignore).
+
+    Proč ne rovnou samples/: uložená stránka je skutečná, s plným textem
+    inzerátu a kontakty na personalisty. Do samples/ (sledované gitem) patří
+    jen anonymizovaná kopie z tools/anonymize_samples.py, takže skutečná
+    stránka se nesmí dostat do commitu ani omylem.
+    """
+    return samples_dir() / "private"
+
+
 def unknown_samples_dir() -> Path:
     """Automaticky uložené detaily s neznámým rozložením (viz pipeline)."""
     return samples_dir() / "nezname"
