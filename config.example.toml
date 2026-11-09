@@ -40,6 +40,11 @@ prodleva_do = 3.0
 # Jak dlouho čekat na odpověď webu (sekundy).
 timeout = 20
 
+# Kolik dní nechat ve složce vystup uložené souhrny (email_….html a .eml).
+# Starší program při každém běhu smaže. 0 = nemazat nikdy.
+# Maže jen své soubory email_*, nic jiného ve složce.
+uchovat_vystup_dni = 30
+
 
 # ---------------------------------------------------------------------
 #  HLEDÁNÍ
@@ -225,8 +230,8 @@ srazka_skryta_mzda = -10
 # ---------------------------------------------------------------------
 [souhrn]
 # Hranice skóre: nabídky s tímto skóre a vyšším jdou do hlavní tabulky,
-# ostatní do sbalené sekce „Ostatní“ pod ní (v Gmailu a Outlooku se
-# nesbalí, ale jsou to jen úsporné řádky). Zakomentuj = vše v hlavní tabulce.
+# ostatní do sekce „Ostatní“ pod ní (úsporné jednořádkové záznamy; sbalit
+# se dá jen v příloze otevřené v prohlížeči). Zakomentuj = vše v hlavní tabulce.
 hranice_skore = 15
 
 # Zobrazit na konci e-mailu vyřazené inzeráty s důvodem (hodí se na ladění filtrů).

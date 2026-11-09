@@ -36,6 +36,7 @@ class General:
     delay_min: float = 1.0
     delay_max: float = 3.0
     timeout: int = 20
+    keep_output_days: int = 30  # 0 = nemazat
 
 
 @dataclass
@@ -237,8 +238,12 @@ def load_config(config_path: Path, secrets_path: Path | None = None) -> Config:
         delay_min=g.get("prodleva_od", float, 1.0),
         delay_max=g.get("prodleva_do", float, 3.0),
         timeout=g.get("timeout", int, 20),
+        keep_output_days=g.get("uchovat_vystup_dni", int, 30),
     )
     g.finish()
+    if general.keep_output_days < 0:
+        warnings.append("obecne.uchovat_vystup_dni nesmí být záporné (0 = nemazat), používám 30.")
+        general.keep_output_days = 30
     if general.delay_min < 0.5:
         # Pod půl sekundy už nejde o slušné scrapování a riskujeme blokaci IP.
         warnings.append("obecne.prodleva_od je příliš malá, používám 0.5 s.")

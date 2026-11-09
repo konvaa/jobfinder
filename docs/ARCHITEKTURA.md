@@ -62,7 +62,10 @@ vznikla z konkrétního problému na skutečných stránkách portálů (listopa
 | 3. Dočasně bez textu (limit, chyba) | v e-mailu není, stavový řádek „čeká na detail N“ | Neoznačí se jako odeslané, zařadí se po stažení detailu. Když počet roste 3 ostré běhy po sobě, přijde varování. |
 
 Proč: skóre bez popisu se se skórem s popisem nedá srovnat. „Ostatní“ jsou
-jednořádkové záznamy, protože Gmail a Outlook `<details>` nesbalí.
+jednořádkové záznamy pod obyčejným nadpisem. Tělo e-mailu `<details>` nepoužívá:
+webmail Seznamu ho při čištění HTML odstraní i s obsahem (sekce by zmizela)
+a Gmail ani Outlook ho stejně nesbalí. Sbalitelná je „Ostatní“ jen v příloze
+`job-agent-souhrn.html`, která se otevírá v prohlížeči.
 
 Stavový řádek sčítá beze zbytku: nalezeno = unikátní + opakované (stejné ID ve
 víc hledáních); unikátní = nové + čeká + vyřazené + dříve vyřazené + duplicity
@@ -136,6 +139,16 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   `…_NEODESLANO.html` a `.eml`, návratový kód 3.
 - **Heslo:** jen v `secrets.toml`, nikdy se nevypisuje (ani délka). Doporučené
   je heslo pro aplikace a samostatná odesílací schránka.
+- **Kopie ve `vystup/` (`outputs.py`):** každý běh uloží `email_….html` (celý
+  souhrn pro prohlížeč) a `email_….eml` (celá zpráva: tělo, text, příloha).
+  Zpráva se sestaví i u `--dry-run`, jen se neodešle. Proč `.eml`: tělo se liší
+  od celého souhrnu (zkrácené, bez `<details>`) a chyby typu „sekce v poště
+  chybí“ jdou ověřit jen na skutečné zprávě. `test-email --nahled` posílá
+  poslední `.eml` znovu s předmětem „TEST – …“, novým `Message-ID` (Gmail
+  zprávu se známým ID tiše zahodí) a příjemci z aktuálního configu.
+- **Úklid:** na začátku každého běhu se smažou vlastní soubory `email_*`
+  přímo ve `vystup/` starší než `[obecne] uchovat_vystup_dni` (podle času
+  změny; 0 = nemazat). Cizí soubory a podsložky se nemažou nikdy.
 
 ## 11. Testy a ukázky
 

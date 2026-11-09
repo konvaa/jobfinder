@@ -241,13 +241,16 @@ class ThresholdEmailTests(BasePipelineTest):
         self.assertTrue(main and others)
         html = emailer.render(report, ROOT / "templates", now=NOW, threshold=threshold)
         self.assertIn(f"Ostatní nabídky ({len(others)})", html)
-        self.assertIn("<details", html)
+        # Tělo e-mailu: obyčejný nadpis, ne <details> (webmail Seznamu ho smaže i s obsahem).
+        self.assertNotIn("<details", html)
+        collapsed = emailer.render(report, ROOT / "templates", now=NOW, threshold=threshold, collapsible=True)
+        self.assertIn("<details", collapsed)  # příloha pro prohlížeč
         self.assertIn(f"({len(main)} v hlavní tabulce, {len(others)} ostatních)", html)
         self.assertEqual(len(main) + len(others), len(report.new_jobs))
 
     def test_no_threshold_no_section(self):
         html = emailer.render(self.run_once(), ROOT / "templates", now=NOW, threshold=None)
-        self.assertNotIn("<details", html)
+        self.assertNotIn("Ostatní nabídky", html)
 
 
 class FollowUpTests(BasePipelineTest):

@@ -12,15 +12,18 @@ jinak zmizela beze stopy.
 from __future__ import annotations
 
 import argparse
+import email
 import logging
 import re
 import sys
 from datetime import datetime
+from email import policy
+from email.message import EmailMessage
 from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from jobagent import __version__, collectors, emailer, explain, mailer, paths, pipeline
+from jobagent import __version__, collectors, emailer, explain, mailer, outputs, paths, pipeline
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
 from jobagent.log import setup_logging
@@ -44,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="poslat zkušební e-mail a ověřit nastavení [email] (nic nesbírá, nic neoznačuje)",
     )
     test.add_argument("--nahled", action="store_true",
-                      help="místo krátké zprávy poslat poslední náhled z vystup/ (jak bude vypadat v poště)")
+                      help="místo krátké zprávy znovu poslat poslední uloženou zprávu z vystup/ (předmět „TEST – …“)")
 
     sample = sub.add_parser(
         "sample",
@@ -110,6 +113,10 @@ def cmd_run(args: argparse.Namespace) -> int:
             log.error("%s Ověření nastavení: jobagent test-email", exc)
             return EXIT_CONFIG
 
+    # Úklid na začátku každého běhu: Plánovač úloh běží denně, takže složka
+    # se udržuje sama, bez dalšího příkazu nebo naplánované úlohy.
+    outputs.cleanup(paths.output_dir(), cfg.general.keep_output_days)
+
     threshold = cfg.summary.score_threshold
     storage = Storage(paths.db_file())
     try:
@@ -118,19 +125,24 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         now = datetime.now()
         html_body, text_body, attachment = emailer.build_bodies(report, paths.templates_dir(), now, threshold)
-        # Celý souhrn se uloží vždy: u --dry-run je to náhled, u ostrého běhu
-        # záznam toho, co odešlo (a podklad pro `test-email --nahled`).
-        preview = emailer.save_preview(attachment or html_body, paths.output_dir(), now)
-        log.info("Souhrn uložen: %s", preview)
+        # Zpráva se sestaví i u --dry-run: uložený .eml je pak přesně to, co by
+        # odešlo, a `test-email --nahled` ho umí poslat beze změny obsahu.
+        msg = mailer.build_message(
+            cfg.email, emailer.subject(report, cfg.email.subject, threshold), text_body, html_body,
+            attachment_html=attachment, attachment_name=emailer.ATTACHMENT_NAME, now=now,
+        )
+        summary_html = attachment or html_body  # celý souhrn pro prohlížeč
         for warning in report.warnings:
             log.warning("%s", warning)
 
         if args.dry_run:
+            html_path, eml_path = outputs.save_summary(msg, summary_html, paths.output_dir(), now)
+            log.info("Náhled uložen: %s (zpráva tak, jak by odešla: %s)", html_path, eml_path.name)
             if not args.no_open:
-                emailer.open_in_browser(preview)
+                emailer.open_in_browser(html_path)
             mail_failed = False
         else:
-            mail_failed = not _deliver(cfg, storage, report, now, html_body, text_body, attachment, threshold)
+            mail_failed = not _deliver(cfg, storage, report, now, msg, summary_html)
     finally:
         storage.close()
 
@@ -144,18 +156,15 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def _deliver(cfg, storage: Storage, report: pipeline.RunReport, now: datetime,
-             html_body: str, text_body: str, attachment: str | None, threshold: int | None) -> bool:
+             msg: EmailMessage, summary_html: str) -> bool:
     """Odeslat souhrn; jen při úspěchu označit nabídky jako odeslané. True = odesláno."""
-    msg = mailer.build_message(
-        cfg.email, emailer.subject(report, cfg.email.subject, threshold), text_body, html_body,
-        attachment_html=attachment, attachment_name=emailer.ATTACHMENT_NAME, now=now,
-    )
-    size_kb = len(msg.as_bytes()) / 1024
-    log.info("Odesílám souhrn (%.0f kB%s) na %s.", size_kb, ", celý v příloze" if attachment else "", msg["To"])
+    has_attachment = msg.is_multipart() and msg.get_content_type() == "multipart/mixed"
+    log.info("Odesílám souhrn (%.0f kB%s) na %s.", len(msg.as_bytes()) / 1024,
+             ", celý v příloze" if has_attachment else "", msg["To"])
     try:
         mailer.send(msg, cfg.email, cfg.secrets.email_password)
     except mailer.MailError as exc:
-        html_path, eml_path = mailer.save_failed(msg, attachment or html_body, paths.output_dir(), now)
+        html_path, eml_path = outputs.save_summary(msg, summary_html, paths.output_dir(), now, unsent=True)
         log.error("E-mail se nepodařilo odeslat: %s", exc)
         if exc.technical:
             log.error("Technicky: %s", exc.technical)
@@ -166,6 +175,12 @@ def _deliver(cfg, storage: Storage, report: pipeline.RunReport, now: datetime,
     # Pořadí „odeslat → označit“ je záměrné: pád mezi tím = duplicita, ne ztráta.
     storage.mark_sent(report.shown_jobs, report.rejected, now, run_id=report.run_id)
     log.info("Odesláno, %d nabídek označeno jako odeslané.", len(report.shown_jobs))
+    try:
+        html_path, eml_path = outputs.save_summary(msg, summary_html, paths.output_dir(), now)
+        log.info("Kopie uložena: %s a %s", html_path, eml_path.name)
+    except OSError as exc:
+        # E-mail odešel a nabídky jsou označené; chybějící kopie nesmí běh shodit.
+        log.warning("Kopii souhrnu se nepodařilo uložit do %s: %s", paths.output_dir(), exc)
     return True
 
 
@@ -181,23 +196,9 @@ def cmd_test_email(args: argparse.Namespace) -> int:
     now = datetime.now()
 
     if args.nahled:
-        previews = sorted(paths.output_dir().glob("email_*.html"), key=lambda path: path.stat().st_mtime)
-        if not previews:
-            log.error("Ve složce %s není žádný náhled. Nejdřív spusť: jobagent run --dry-run --no-open",
-                      paths.output_dir())
+        msg = _saved_preview(e, now)
+        if msg is None:
             return EXIT_ERROR
-        source = previews[-1]
-        html_body = source.read_text(encoding="utf-8")
-        size = len(html_body.encode("utf-8"))
-        log.info("Posílám náhled %s (%.0f kB).", source.name, size / 1024)
-        if size > emailer.BODY_LIMIT_BYTES:
-            # Záměrně se nezkracuje: test má ukázat, jak pošta zachází s velkým e-mailem.
-            log.warning("Náhled má přes %d kB. Gmail takové tělo usekne („Zpráva byla oříznuta“); ostrý běh "
-                        "by v těle nechal jen prvních %d ostatních a celý souhrn dal do přílohy.",
-                        emailer.BODY_LIMIT_BYTES // 1000, emailer.BODY_OTHER_ROWS)
-        subject = f"{e.subject}: test – náhled {source.stem.removeprefix('email_')}"
-        text_body = (f"Zkušební odeslání náhledu {source.name} ({size / 1024:.0f} kB).\n"
-                     "Souhrn je v HTML části zprávy. Nabídky se neoznačily jako odeslané.\n")
     else:
         subject = f"{e.subject}: zkušební e-mail"
         lines = [
@@ -214,8 +215,8 @@ def cmd_test_email(args: argparse.Namespace) -> int:
         html_body = ("<!DOCTYPE html><html lang=\"cs\"><meta charset=\"utf-8\"><body style=\"font-family:sans-serif\">"
                      + "".join(f"<p>{escape(line)}</p>" if line else "" for line in lines)
                      + "</body></html>")
+        msg = mailer.build_message(e, subject, text_body, html_body, now=now)
 
-    msg = mailer.build_message(e, subject, text_body, html_body, now=now)
     try:
         # Bez opakování: u testu chceš chybu hned, ne za minutu.
         mailer.send(msg, e, cfg.secrets.email_password, retries=0)
@@ -226,6 +227,42 @@ def cmd_test_email(args: argparse.Namespace) -> int:
         return EXIT_MAIL
     log.info("Hotovo. Zkontroluj schránku %s (případně složku spam).", ", ".join(e.recipients))
     return EXIT_OK
+
+
+def _saved_preview(e, now: datetime) -> EmailMessage | None:
+    """Pro `test-email --nahled`: poslední uložený .eml, jinak poslední HTML (starší běhy)."""
+    out = paths.output_dir()
+    eml = outputs.latest(out, ".eml")
+    if eml is not None:
+        msg = email.message_from_bytes(eml.read_bytes(), policy=policy.default)
+        html_part = msg.get_body(("html",))
+        body_size = len(html_part.get_content().encode("utf-8")) if html_part is not None else 0
+        has_attachment = any(True for _ in msg.iter_attachments())
+        log.info("Posílám znovu uloženou zprávu %s (celkem %.0f kB, tělo %.0f kB, příloha: %s).",
+                 eml.name, len(eml.read_bytes()) / 1024, body_size / 1024, "ano" if has_attachment else "ne")
+        _warn_big_body(body_size)
+        return mailer.as_test(msg, e, now)
+
+    html_file = outputs.latest(out, ".html")
+    if html_file is None:
+        log.error("Ve složce %s není žádný uložený souhrn. Nejdřív spusť: jobagent run --dry-run --no-open", out)
+        return None
+    html_body = html_file.read_text(encoding="utf-8")
+    size = len(html_body.encode("utf-8"))
+    log.info("Uložená zpráva (.eml) není, posílám HTML %s (%.0f kB) jako tělo.", html_file.name, size / 1024)
+    _warn_big_body(size)
+    text_body = (f"Zkušební odeslání náhledu {html_file.name} ({size / 1024:.0f} kB).\n"
+                 "Souhrn je v HTML části zprávy. Nabídky se neoznačily jako odeslané.\n")
+    subject = f"{e.subject}: náhled {html_file.stem.removeprefix(outputs.PREFIX)}"
+    return mailer.as_test(mailer.build_message(e, subject, text_body, html_body, now=now), e, now)
+
+
+def _warn_big_body(size: int) -> None:
+    if size > emailer.BODY_LIMIT_BYTES:
+        # Záměrně se nezkracuje: test má ukázat, jak pošta zachází s velkým e-mailem.
+        log.warning("Tělo má přes %d kB. Gmail takové tělo usekne („Zpráva byla oříznuta“); ostrý běh "
+                    "by v těle nechal jen prvních %d ostatních a celý souhrn dal do přílohy.",
+                    emailer.BODY_LIMIT_BYTES // 1000, emailer.BODY_OTHER_ROWS)
 
 
 def cmd_sample(args: argparse.Namespace) -> int:

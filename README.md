@@ -85,7 +85,7 @@ does not open your main inbox. Check the settings with `test-email`.
 python -m jobagent run                    :: live run: collect, score, send the summary
 python -m jobagent run --dry-run          :: full run without sending; opens the e-mail preview in a browser
 python -m jobagent test-email             :: send a short test e-mail (server, password, recipients)
-python -m jobagent test-email --nahled    :: send the latest preview from vystup/ (how it looks in a mail client)
+python -m jobagent test-email --nahled    :: resend the latest saved message from vystup/ (subject "TEST – …")
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet
@@ -100,6 +100,12 @@ Exit codes (shown by Windows Task Scheduler as "Last Run Result"): 0 = OK,
 could not be sent. On 3 nothing is marked as sent, the next run sends the same
 offers again, and the unsent summary is saved in `vystup/` (`…_NEODESLANO.html`
 and `.eml`).
+
+The `vystup/` folder: every run (including `--dry-run`) saves `email_….html`
+(the full summary for a browser) and `email_….eml` (exactly the message that was
+or would be sent: body, plain-text version and attachment). Files older than
+`[obecne] uchovat_vystup_dni` (default 30, 0 = never) are deleted on the next run.
+Only `email_*` files are deleted, nothing else in the folder.
 
 ## How it is built
 

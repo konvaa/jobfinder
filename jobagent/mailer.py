@@ -24,7 +24,6 @@ from collections.abc import Callable
 from datetime import datetime
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
-from pathlib import Path
 
 from jobagent import __version__
 from jobagent.config import EmailCfg
@@ -192,15 +191,29 @@ def explain(exc: BaseException, cfg: EmailCfg) -> MailError:
     return err(f"Neočekávaná chyba při odesílání: {tech}", False)
 
 
-def save_failed(msg: EmailMessage, html_text: str, out_dir: Path, now: datetime | None = None) -> tuple[Path, Path]:
-    """Neodeslaný e-mail: HTML k přečtení v prohlížeči a .eml pro Outlook/Thunderbird."""
-    now = now or datetime.now()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    base = out_dir / f"email_{now:%Y-%m-%d_%H%M%S}_NEODESLANO"
-    html_path, eml_path = base.with_suffix(".html"), base.with_suffix(".eml")
-    html_path.write_text(html_text, encoding="utf-8")
-    eml_path.write_bytes(msg.as_bytes())
-    return html_path, eml_path
+TEST_PREFIX = "TEST – "
+
+
+def as_test(msg: EmailMessage, cfg: EmailCfg, now: datetime | None = None) -> EmailMessage:
+    """Uloženou zprávu (.eml) připravit k opětovnému odeslání jako test.
+
+    Obsah (tělo, textová verze, příloha) zůstává beze změny – o to v testu jde.
+    Mění se jen hlavičky:
+    - Message-ID nové: Gmail zprávu s Message-ID, které už ve schránce má,
+      tiše zahodí, takže by opakovaně poslaný e-mail nikdy nedorazil.
+    - From/To podle současného configu: .eml z --dry-run nemusí mít příjemce
+      a nastavení se mohlo od uložení změnit.
+    - Předmět s „TEST – “, ať se v poště neplete se skutečným souhrnem.
+    """
+    subject = str(msg.get("Subject", "")).removeprefix(TEST_PREFIX)
+    for header in ("Subject", "From", "To", "Cc", "Bcc", "Date", "Message-ID"):
+        del msg[header]  # del na chybějící hlavičku je v email.message bez chyby
+    msg["Subject"] = TEST_PREFIX + subject
+    msg["From"] = formataddr((SENDER_NAME, cfg.sender or cfg.user))
+    msg["To"] = ", ".join(cfg.recipients)
+    msg["Date"] = formatdate((now or datetime.now()).timestamp(), localtime=True)
+    msg["Message-ID"] = make_msgid("jobagent", domain=(cfg.sender or cfg.user).rpartition("@")[2] or None)
+    return msg
 
 
 def _is_4xx(code: int | None) -> bool:

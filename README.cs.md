@@ -99,7 +99,7 @@ hlavní poštu. Nastavení ověříš příkazem `test-email`.
 python -m jobagent run                 :: ostrý běh: sběr, hodnocení, odeslání souhrnu
 python -m jobagent run --dry-run       :: běh bez odeslání, náhled e-mailu se otevře v prohlížeči
 python -m jobagent test-email          :: krátký zkušební e-mail (ověří server, heslo, příjemce)
-python -m jobagent test-email --nahled :: pošle poslední náhled z vystup\ (jak vypadá v poště)
+python -m jobagent test-email --nahled :: znovu pošle poslední uloženou zprávu z vystup\ (předmět „TEST – …“)
 python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem
@@ -113,6 +113,12 @@ spuštění“): 0 = OK, 1 = chyba (např. selhala všechna hledání), 2 = chyb
 v nastavení, 3 = e-mail se nepodařilo odeslat. Při kódu 3 se nic neoznačí jako
 odeslané, příští běh pošle tytéž nabídky znovu a neodeslaný souhrn leží ve
 `vystup\` (`…_NEODESLANO.html` a `.eml`).
+
+Složka `vystup\`: každý běh (i `--dry-run`) uloží `email_…html` (celý souhrn
+k otevření v prohlížeči) a `email_…eml` (přesně zpráva, která odešla nebo by
+odešla: tělo, textová verze i příloha; otevře ji Outlook i Thunderbird).
+Soubory starší než `[obecne] uchovat_vystup_dni` (výchozí 30, 0 = nemazat)
+se při dalším běhu smažou. Maže se jen `email_*`, jiné soubory ve složce zůstanou.
 
 ## Kde co je
 

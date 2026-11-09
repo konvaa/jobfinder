@@ -13,12 +13,12 @@ import socket
 import ssl
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from email import policy
 from pathlib import Path
 from unittest import mock
 
-from jobagent import cli, emailer, mailer, paths
+from jobagent import cli, emailer, mailer, outputs, paths
 from jobagent.config import EmailCfg, load_config
 from jobagent.models import Job
 from jobagent.pipeline import RunReport, SearchStat
@@ -136,6 +136,14 @@ class BodyTests(unittest.TestCase):
         self.assertIn("https://www.jobs.cz/rpd/1002/", text_body)
         self.assertNotIn("##", text_body)  # návod ze šablony do e-mailu nepatří
         self.assertNotIn("\n\n\n", text_body)
+        self.assert_plain_others(html_body, 3)
+
+    def assert_plain_others(self, html_body, count):
+        """Webmail Seznamu maže <details> i s obsahem: v těle nesmí být, nadpis ano."""
+        self.assertNotIn("<details", html_body)
+        self.assertNotIn("<summary", html_body)
+        self.assertIn(f"Ostatní nabídky ({count})", html_body)
+        self.assertRegex(html_body, rf"<h3[^>]*>Ostatní nabídky \({count}\)")
 
     def test_large_summary_goes_to_attachment(self):
         r = report(1, 400)
@@ -148,6 +156,13 @@ class BodyTests(unittest.TestCase):
         self.assertNotIn("Pozice 1020", html_body)
         self.assertIn("a dalších 380", text_body)
         self.assertIn(emailer.ATTACHMENT_NAME, html_body)
+        self.assert_plain_others(html_body, 400)
+        # Příloha se otevírá v prohlížeči: tam má dlouhý seznam zůstat sbalitelný.
+        self.assertIn("<details", attachment)
+        self.assertIn("Ostatní nabídky (400)", attachment)
+
+    def test_render_default_is_safe_for_mail(self):
+        self.assertNotIn("<details", emailer.render(report(1, 5), TEMPLATES, NOW, 20))
 
 
 class SendTests(unittest.TestCase):
@@ -247,15 +262,87 @@ class ExplainTests(unittest.TestCase):
         self.assertIn("TimeoutError", self.explain(TimeoutError("timed out")).technical)
 
 
-class SaveFailedTests(unittest.TestCase):
-    def test_html_and_eml_saved(self):
-        msg = mailer.build_message(cfg(), "S", "t", "<p>h</p>", now=NOW)
-        with tempfile.TemporaryDirectory() as tmp:
-            html_path, eml_path = mailer.save_failed(msg, "<p>celý</p>", Path(tmp), NOW)
-            self.assertEqual(html_path.name, "email_2026-11-04_100000_NEODESLANO.html")
-            self.assertEqual(html_path.read_text(encoding="utf-8"), "<p>celý</p>")
-            parsed = email.message_from_bytes(eml_path.read_bytes(), policy=policy.default)
-            self.assertEqual(parsed["Subject"], "S")
+class OutputsTests(unittest.TestCase):
+    """Soubory ve vystup/: dvojice .html + .eml a úklid jen vlastních souborů."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.out = Path(self.tmp.name)
+
+    def test_saves_html_and_full_eml(self):
+        msg = mailer.build_message(cfg(), "S", "t", "<p>h</p>", attachment_html="<p>celý</p>",
+                                   attachment_name=emailer.ATTACHMENT_NAME, now=NOW)
+        html_path, eml_path = outputs.save_summary(msg, "<p>celý</p>", self.out, NOW)
+        self.assertEqual((html_path.name, eml_path.name), ("email_2026-11-04_100000.html", "email_2026-11-04_100000.eml"))
+        self.assertEqual(html_path.read_text(encoding="utf-8"), "<p>celý</p>")
+        parsed = email.message_from_bytes(eml_path.read_bytes(), policy=policy.default)
+        self.assertEqual(parsed["Subject"], "S")
+        self.assertEqual(parsed.get_body(("plain",)).get_content().strip(), "t")  # textová verze
+        self.assertEqual(parsed.get_body(("html",)).get_content().strip(), "<p>h</p>")  # tělo
+        self.assertEqual([a.get_filename() for a in parsed.iter_attachments()], [emailer.ATTACHMENT_NAME])
+
+    def test_unsent_suffix(self):
+        msg = mailer.build_message(cfg(), "S", "t", "h", now=NOW)
+        html_path, eml_path = outputs.save_summary(msg, "h", self.out, NOW, unsent=True)
+        self.assertEqual(eml_path.name, "email_2026-11-04_100000_NEODESLANO.eml")
+        self.assertEqual(html_path.stem, eml_path.stem)
+
+    def age(self, name: str, days: float) -> Path:
+        path = self.out / name
+        path.write_text("x", encoding="utf-8")
+        stamp = (NOW - timedelta(days=days)).timestamp()
+        os.utime(path, (stamp, stamp))
+        return path
+
+    def test_cleanup_removes_only_old_own_files(self):
+        old_html = self.age("email_2026-09-01_080000.html", 40)
+        old_eml = self.age("email_2026-09-01_080000_NEODESLANO.eml", 40)
+        fresh = self.age("email_2026-11-01_080000.eml", 3)
+        foreign = self.age("moje_poznamky.txt", 400)  # cizí soubor uživatele
+        foreign_html = self.age("vlastni.html", 400)
+        (self.out / "archiv").mkdir()
+        nested = self.out / "archiv" / "email_2025-01-01_080000.html"
+        nested.write_text("x", encoding="utf-8")
+        os.utime(nested, (1, 1))
+
+        self.assertEqual(outputs.cleanup(self.out, 30, NOW), 2)
+        self.assertFalse(old_html.exists())
+        self.assertFalse(old_eml.exists())
+        for kept in (fresh, foreign, foreign_html, nested):
+            self.assertTrue(kept.exists(), kept.name)
+
+    def test_cleanup_zero_days_keeps_everything(self):
+        old = self.age("email_2020-01-01_080000.html", 2000)
+        self.assertEqual(outputs.cleanup(self.out, 0, NOW), 0)
+        self.assertTrue(old.exists())
+
+    def test_cleanup_missing_dir(self):
+        self.assertEqual(outputs.cleanup(self.out / "neni", 30, NOW), 0)
+
+    def test_latest_by_mtime(self):
+        self.age("email_2026-11-05_080000.eml", 5)  # jméno novější, soubor starší
+        newest = self.age("email_2026-11-01_080000.eml", 1)
+        self.age("email_2026-11-09_080000.html", 0)
+        self.assertEqual(outputs.latest(self.out, ".eml"), newest)
+        self.assertIsNone(outputs.latest(self.out / "neni", ".eml"))
+
+
+class AsTestTests(unittest.TestCase):
+    def test_headers_replaced_content_kept(self):
+        original = mailer.build_message(cfg(recipients=[]), "Job Agent: 5 nových", "t", "<p>h</p>",
+                                        attachment_html="<p>celý</p>", attachment_name="a.html", now=NOW)
+        parsed = email.message_from_bytes(original.as_bytes(), policy=policy.default)
+        msg = mailer.as_test(parsed, cfg(recipients=["novy@example.com"]), datetime(2026, 11, 9, 18))
+        self.assertEqual(msg["Subject"], "TEST – Job Agent: 5 nových")
+        self.assertEqual(msg["To"], "novy@example.com")
+        self.assertNotEqual(msg["Message-ID"], original["Message-ID"])  # jinak by ho Gmail zahodil
+        self.assertEqual(len(msg.get_all("Message-ID")), 1)
+        self.assertEqual(msg.get_body(("html",)).get_content().strip(), "<p>h</p>")
+        self.assertEqual(len(list(msg.iter_attachments())), 1)
+        # Podruhé poslaný test nemá „TEST – TEST – “.
+        again = mailer.as_test(msg, cfg(), NOW)
+        self.assertEqual(again["Subject"], "TEST – Job Agent: 5 nových")
 
 
 class LiveRunTests(unittest.TestCase):
@@ -302,8 +389,36 @@ class LiveRunTests(unittest.TestCase):
         jobs, delivered = self.sent_count()
         self.assertGreater(jobs, 0)
         self.assertEqual(delivered, 1)
-        self.assertTrue(list((self.app / "vystup").glob("email_*.html")))
+        out = self.app / "vystup"
+        emls = list(out.glob("email_*.eml"))
+        self.assertEqual(len(emls), 1)
+        self.assertNotIn("NEODESLANO", emls[0].name)
+        self.assertTrue(emls[0].with_suffix(".html").exists())
+        saved = email.message_from_bytes(emls[0].read_bytes(), policy=policy.default)
+        self.assertEqual(saved["Subject"], send.call_args.args[0]["Subject"])  # uložené = odeslané
         self.assertFalse(any("heslo" in line for line in logs))
+
+    def test_dry_run_saves_eml_without_sending(self):
+        with mock.patch.object(mailer, "send") as send, self.assertLogs("jobagent", level="INFO"):
+            code = cli.cmd_run(argparse.Namespace(dry_run=True, no_open=True))
+        self.assertEqual(code, 0)
+        send.assert_not_called()
+        self.assertEqual(self.sent_count(), (0, 0))
+        emls = list((self.app / "vystup").glob("email_*.eml"))
+        self.assertEqual(len(emls), 1)
+        saved = email.message_from_bytes(emls[0].read_bytes(), policy=policy.default)
+        self.assertIn("NÁHLED (dry-run)", saved.get_body(("html",)).get_content())
+        self.assertNotIn("<details", saved.get_body(("html",)).get_content())
+
+    def test_run_cleans_old_files(self):
+        out = self.app / "vystup"
+        out.mkdir()
+        old = out / "email_2026-01-01_080000.eml"
+        old.write_text("x", encoding="utf-8")
+        os.utime(old, (1, 1))
+        self.cfg.general.keep_output_days = 30
+        self.run_cli()
+        self.assertFalse(old.exists())
 
     def test_failure_marks_nothing_and_returns_3(self):
         code, _, logs = self.run_cli(mailer.MailError("Server odmítl přihlášení.", transient=False))
@@ -311,6 +426,8 @@ class LiveRunTests(unittest.TestCase):
         self.assertEqual(self.sent_count(), (0, 0))
         self.assertTrue(list((self.app / "vystup").glob("*_NEODESLANO.html")))
         self.assertTrue(list((self.app / "vystup").glob("*_NEODESLANO.eml")))
+        # Neodeslaný se neuloží ještě jednou jako „odeslaný“.
+        self.assertFalse([p for p in (self.app / "vystup").glob("email_*.eml") if "NEODESLANO" not in p.name])
         self.assertTrue(any("test-email" in line for line in logs))
 
     def test_failed_run_resends_same_jobs(self):
@@ -358,7 +475,27 @@ class TestEmailCommandTests(unittest.TestCase):
         code, _, _ = self.run_cmd(side_effect=mailer.MailError("nejde", transient=False, technical="T"))
         self.assertEqual(code, 3)
 
-    def test_preview_sends_latest_file(self):
+    def test_preview_resends_latest_eml(self):
+        out = self.app / "vystup"
+        out.mkdir()
+        sent = mailer.build_message(cfg(), "Job Agent: 3 nové", "text", "<p>tělo</p>",
+                                    attachment_html="<p>celý</p>", attachment_name=emailer.ATTACHMENT_NAME, now=NOW)
+        outputs.save_summary(sent, "<p>celý</p>", out, NOW)
+        older = out / "email_2026-11-01_080000.eml"
+        older.write_bytes(mailer.build_message(cfg(), "Starý", "t", "h", now=NOW).as_bytes())
+        os.utime(older, (1, 1))
+        code, send, logs = self.run_cmd(nahled=True)
+        self.assertEqual(code, 0)
+        msg = send.call_args.args[0]
+        self.assertEqual(msg["Subject"], "TEST – Job Agent: 3 nové")
+        self.assertEqual(msg["To"], "ja@example.com, kamarad@example.com")
+        self.assertNotEqual(msg["Message-ID"], sent["Message-ID"])
+        self.assertEqual(msg.get_body(("html",)).get_content().strip(), "<p>tělo</p>")
+        self.assertEqual([a.get_filename() for a in msg.iter_attachments()], [emailer.ATTACHMENT_NAME])
+        self.assertEqual(send.call_args.kwargs["retries"], 0)
+        self.assertFalse(any("Gmail" in line for line in logs))  # malé tělo = bez varování
+
+    def test_preview_falls_back_to_html(self):
         out = self.app / "vystup"
         out.mkdir()
         old, new = out / "email_2026-11-01_080000.html", out / "email_2026-11-04_080000.html"
@@ -368,6 +505,7 @@ class TestEmailCommandTests(unittest.TestCase):
         code, send, logs = self.run_cmd(nahled=True)
         self.assertEqual(code, 0)
         msg = send.call_args.args[0]
+        self.assertTrue(msg["Subject"].startswith("TEST – "))
         self.assertIn("2026-11-04_080000", msg["Subject"])
         self.assertIn("<p>nový</p>", msg.get_body(("html",)).get_content())
         self.assertTrue(any("Gmail" in line for line in logs))  # varování o velikosti
@@ -413,6 +551,19 @@ class EmailConfigTests(unittest.TestCase):
     def test_port_mismatch_warns(self):
         c = self.load('port = 587\nzabezpeceni = "ssl"\nuzivatel = "a@b.cz"\nprijemci = ["a@b.cz"]\n')
         self.assertTrue(any("587" in w for w in c.warnings))
+
+    def test_keep_output_days(self):
+        self.assertEqual(load_config(ROOT / "config.example.toml").general.keep_output_days, 30)
+
+    def test_negative_keep_days_warns(self):
+        text = (ROOT / "config.example.toml").read_text(encoding="utf-8")
+        text = text.replace("uchovat_vystup_dni = 30", "uchovat_vystup_dni = -5")
+        tmp = Path(tempfile.mkdtemp()) / "config.toml"
+        self.addCleanup(lambda: (tmp.unlink(), tmp.parent.rmdir()))
+        tmp.write_text(text, encoding="utf-8")
+        c = load_config(tmp)
+        self.assertEqual(c.general.keep_output_days, 30)
+        self.assertTrue(any("uchovat_vystup_dni" in w for w in c.warnings))
 
     def test_sender_differs_from_user_warns(self):
         c = self.load('uzivatel = "a@b.cz"\nodesilatel = "jiny@example.com"\nprijemci = ["a@b.cz"]\n')

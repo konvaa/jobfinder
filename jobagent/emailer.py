@@ -14,10 +14,11 @@ Sekce „Zajímavé podle názvu“ má nabídky bez textu detailu (kariérní w
 s JavaScriptem apod.) s kladnými body v názvu, řazené podle bodů v názvu.
 Jejich celkové skóre se s ostatními nedá srovnat, proto vlastní sekce.
 
-Sekce „Ostatní“ (pod hranicí skóre + bez popisu bez bodů v názvu) je v <details>. Sbalit ji umí
-Thunderbird a Apple Mail. Gmail, Outlook a webmaily značku ignorují
-a ukážou obsah rozbalený, proto jsou tam úsporné jednořádkové záznamy,
-ne celá tabulka.
+Sekce „Ostatní“ (pod hranicí skóre + bez popisu bez bodů v názvu) má úsporné
+jednořádkové záznamy, ne celou tabulku. V těle e-mailu je to obyčejný nadpis
+s řádky: webmail Seznamu při čištění HTML odstraní <details> i S OBSAHEM
+(ověřeno 9. 11. 2026), jiní klienti značku ignorují nebo ji sbalí. Sbalitelné
+<details> dostane jen příloha (collapsible=True), která se otevírá v prohlížeči.
 
 Textová verze (templates/email.txt) vzniká ze stejných dat jako HTML. Proč
 obě: klienti bez HTML ji zobrazí a spamové filtry hodnotí zprávu jen s HTML
@@ -82,8 +83,12 @@ def split_by_threshold(jobs: list[Job], threshold: int | None) -> tuple[list[Job
 
 
 def render(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None,
-           others_limit: int | None = None) -> str:
-    """HTML souhrnu. others_limit: kolik „ostatních“ ukázat (zbytek je v příloze)."""
+           others_limit: int | None = None, collapsible: bool = False) -> str:
+    """HTML souhrnu. others_limit: kolik „ostatních“ ukázat (zbytek je v příloze).
+
+    collapsible=True zabalí „Ostatní“ do <details> – jen pro přílohu a náhled
+    v prohlížeči. Výchozí False je bezpečný pro tělo e-mailu (viz hlavička modulu).
+    """
     now = now or datetime.now()
     page = _load(templates_dir, "email.html")
     row = _load(templates_dir, "nabidka.html")
@@ -122,13 +127,17 @@ def render(report: RunReport, templates_dir: Path, now: datetime | None = None, 
         rest = len(others) - len(shown_others)
         more = (f'<p style="margin:8px 0 0;color:#555;font-size:13px">… a dalších {rest} v příloze '
                 f"{_e(ATTACHMENT_NAME)}.</p>") if rest else ""
-        others_html = (
-            '<details style="margin:24px 0 0"><summary style="cursor:pointer;font-size:15px;font-weight:bold;color:#333">'
-            f"Ostatní nabídky ({len(others)})"
-            + (f" – skóre pod {threshold} nebo bez popisu" if threshold is not None else " – bez popisu")
-            + "</summary>"
-            f'<div style="margin-top:8px">{other_rows}</div>{more}</details>'
-        )
+        heading = f"Ostatní nabídky ({len(others)})" + (
+            f" – skóre pod {threshold} nebo bez popisu" if threshold is not None else " – bez popisu")
+        body = f'<div style="margin-top:8px">{other_rows}</div>{more}'
+        if collapsible:
+            others_html = (
+                '<details style="margin:24px 0 0"><summary style="cursor:pointer;font-size:15px;'
+                f'font-weight:bold;color:#333">{_e(heading)}</summary>{body}</details>'
+            )
+        else:
+            others_html = f'<h3 style="margin:28px 0 4px;font-size:15px;color:#333">{_e(heading)}</h3>{body}'
+
 
     rejected_html = ""
     if report.rejected:
@@ -360,12 +369,13 @@ def build_bodies(report: RunReport, templates_dir: Path, now: datetime | None = 
     Celý souhrn se vykreslí vždy. Když přesáhne BODY_LIMIT_BYTES, tělo se
     zkrátí na prvních BODY_OTHER_ROWS „ostatních“ a celý souhrn jde jako příloha.
     """
-    full_html = render(report, templates_dir, now, threshold)
-    if len(full_html.encode("utf-8")) <= BODY_LIMIT_BYTES:
-        return full_html, render_text(report, templates_dir, now, threshold), None
+    full_body = render(report, templates_dir, now, threshold)
+    if len(full_body.encode("utf-8")) <= BODY_LIMIT_BYTES:
+        return full_body, render_text(report, templates_dir, now, threshold), None
     return (render(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
             render_text(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
-            full_html)
+            # Příloha se otevírá v prohlížeči, tam <details> funguje a dlouhý seznam sbalí.
+            render(report, templates_dir, now, threshold, collapsible=True))
 
 
 def _load_text(templates_dir: Path, name: str) -> Template:
@@ -391,14 +401,6 @@ def _job_plain(job: Job, score: int | None = None) -> dict[str, str]:
         "odkaz": job.url,
         "portal": " + ".join([job.portal, *job.also_on]),
     }
-
-
-def save_preview(html_text: str, out_dir: Path, now: datetime | None = None) -> Path:
-    now = now or datetime.now()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"email_{now:%Y-%m-%d_%H%M%S}.html"
-    path.write_text(html_text, encoding="utf-8")
-    return path
 
 
 def open_in_browser(path: Path) -> None:

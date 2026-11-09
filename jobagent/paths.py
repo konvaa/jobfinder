@@ -46,7 +46,7 @@ def templates_dir() -> Path:
 
 
 def output_dir() -> Path:
-    """Sem ukládá `run --dry-run` náhled e-mailu."""
+    """Uložené souhrny (.html + .eml) z každého běhu, viz outputs.py."""
     return app_dir() / "vystup"
 
 
