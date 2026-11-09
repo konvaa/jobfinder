@@ -1,0 +1,8 @@
+# Závislosti Job Agenta – přesné verze kvůli opakovatelnému buildu exe.
+# Přímá závislost je jen beautifulsoup4, zbylé dvě jsou její závislosti.
+# Připnuté jsou i ty, aby build za půl roku dal stejný výsledek jako dnes.
+# Aktualizace: v .venv spusť  python -m pip install -U beautifulsoup4,
+# otestuj (python -m unittest) a sem přepiš verze z  python -m pip freeze.
+beautifulsoup4==4.15.0
+soupsieve==4.0.1
+typing-extensions==4.16.0

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!--
+  Kostra e-mailu Job Agenta. Můžeš ji upravit v Poznámkovém bloku.
+  Proměnné začínají znakem $ a program je při vykreslení nahradí:
+    $datum         datum a čas běhu
+    $rezim         „NÁHLED (dry-run)“ při zkušebním běhu, jinak prázdné
+    $stav          stavový řádek (portály / nalezeno / nových / vyřazeno / chyby)
+    $detaily       kolik detailů se stáhlo, kolik bylo bez textu, kolik čeká
+    $varovani      červený rámeček s upozorněními (prázdné, když nic není)
+    $pocet_novych  počet nabídek v hlavní tabulce (s popisem, nad hranicí skóre)
+    $nabidky       řádky tabulky – každý podle šablony nabidka.html
+    $podle_nazvu   sekce „Zajímavé podle názvu – bez popisu“ (řádky podle nabidka.html)
+    $ostatni       sbalená sekce: pod hranicí skóre a bez popisu (řádky podle ostatni.html)
+    $vyrazene      sekce vyřazených inzerátů (řádky podle vyrazeno.html)
+    $hodnoceni     jak se hodnotilo (klíčová slova / AI)
+  Chceš-li napsat obyčejný znak dolaru, napiš $$.
+  E-mailové programy neumí styly v <head> spolehlivě, proto jsou styly přímo u prvků.
+-->
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Job Agent – $datum</title>
+</head>
+<body style="margin:0;padding:16px;font-family:Segoe UI,Arial,sans-serif;color:#222;background:#f5f5f5">
+<div style="max-width:1000px;margin:0 auto;background:#fff;padding:20px 24px;border-radius:6px">
+  <p style="margin:0;color:#c62828;font-weight:bold">$rezim</p>
+  <h2 style="margin:4px 0 4px;font-size:20px">Nabídky práce – $datum</h2>
+  <p style="margin:0 0 2px;color:#555;font-size:13px">$stav · hodnocení: $hodnoceni</p>
+  <p style="margin:0 0 8px;color:#888;font-size:12px">$detaily</p>
+  $varovani
+  <h3 style="margin:18px 0 8px;font-size:16px">Nové nabídky ($pocet_novych)</h3>
+  <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px">
+    <tr style="background:#263238;color:#fff;text-align:left">
+      <th style="padding:8px">Pozice</th>
+      <th style="padding:8px">Firma</th>
+      <th style="padding:8px">Místo</th>
+      <th style="padding:8px">Mzda</th>
+      <th style="padding:8px">Skóre</th>
+      <th style="padding:8px">Proč</th>
+      <th style="padding:8px">Portál</th>
+    </tr>
+    $nabidky
+  </table>
+  $podle_nazvu
+  $ostatni
+  $vyrazene
+  <p style="margin:24px 0 0;color:#999;font-size:12px">Vygeneroval Job Agent. Nastavení najdeš v config.toml vedle programu.</p>
+</div>
+</body>
+</html>

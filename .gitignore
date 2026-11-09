@@ -1,0 +1,38 @@
+# --- Osobní nastavení a tajné údaje: NIKDY do gitu ---------------------
+config.toml
+# Zálohy osobního configu (config.toml.zaloha před každou úpravou).
+config.toml.*
+secrets.toml
+secrets*.toml
+*.env
+.env*
+*.key
+# Vzorové soubory do gitu patří (výjimka musí být až za pravidlem, které ruší).
+!config.example.toml
+!secrets.example.toml
+
+# --- Data vznikající za běhu --------------------------------------------
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+logs/
+*.log
+vystup/
+# Automaticky uložené detaily neznámých webů: podklad k prozkoumání, ne testovací data.
+# Když z nějakého chceš udělat test, přesuň ho o úroveň výš do samples/.
+samples/nezname/
+# Originály skutečných stránek (plné texty inzerátů, kontakty) a soukromá mapa
+# náhrad. Do repa jdou jen anonymizované kopie, viz samples/README.md.
+samples/private/
+
+# --- Soukromé pracovní poznámky -------------------------------------------
+prompts/
+
+# --- Python a build -------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+build/
+dist/
+# Soubor .spec od PyInstalleru se commituje (fáze 6), proto tu záměrně není.

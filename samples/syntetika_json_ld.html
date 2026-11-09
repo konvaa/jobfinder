@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- SYNTETICKÁ ukázka (ne z reálného webu): kariérní stránka s JSON-LD schema.org/JobPosting.
+     Ověřuje první krok obecné vrstvy detailu: JSON-LD má přednost před HTML. -->
+<html lang="cs"><head><meta charset="utf-8"><title>Python vývojář – Příklad a.s.</title>
+<script type="application/ld+json">{ "rozbitý": JSON, který se má přeskočit </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type": "Organization", "name": "Příklad a.s."},
+    {
+      "@type": "JobPosting",
+      "title": "Python vývojář",
+      "datePosted": "2026-10-30",
+      "description": "<p>Hledáme <b>Python vývojáře</b> pro automatizaci výrobních systémů. Práce z domova 3 dny v týdnu, dopoledne v kanceláři.</p><ul><li>Python, SQL</li><li>Linux</li></ul><p>Nabízíme stabilní zázemí, moderní technologie, 5 týdnů dovolené a příspěvek na penzijní spoření.</p>",
+      "hiringOrganization": {"@type": "Organization", "name": "Příklad a.s."},
+      "jobLocation": {"@type": "Place", "address": {"@type": "PostalAddress", "addressLocality": "Kopřivnice"}},
+      "baseSalary": {"@type": "MonetaryAmount", "currency": "CZK",
+                     "value": {"@type": "QuantitativeValue", "minValue": 55000, "maxValue": 70000, "unitText": "MONTH"}}
+    }
+  ]
+}
+</script></head><body>
+<nav><a href="/">Domů</a> <a href="/kariera">Kariéra</a></nav>
+<main><h1>Python vývojář</h1><p>Text na stránce je jen doplněk, parser má použít JSON-LD.</p></main>
+</body></html>

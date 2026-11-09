@@ -1,0 +1,262 @@
+# =====================================================================
+#  JOB AGENT – NASTAVENÍ
+# =====================================================================
+#  Jak začít:
+#    1. Zkopíruj tento soubor a kopii přejmenuj na  config.toml
+#       (musí ležet ve stejné složce jako program).
+#    2. Uprav hodnoty níže. Stačí Poznámkový blok.
+#    3. Ulož v kódování UTF-8 (v Poznámkovém bloku je to výchozí).
+#
+#  Pravidla zápisu (formát TOML):
+#    - řádek začínající # je komentář, program ho ignoruje,
+#    - text patří do "uvozovek", čísla a true/false bez uvozovek,
+#    - seznam se píše do hranatých závorek: ["první", "druhý"],
+#    - [sekce] zahajuje skupinu nastavení. Vše pod ní až do další
+#      sekce patří k ní, proto pořadí řádků mezi sekcemi neměň.
+#
+#  Hesla a API klíč sem NEPATŘÍ. Ty jsou v souboru secrets.toml,
+#  takže tenhle soubor můžeš bez obav poslat kamarádovi.
+# =====================================================================
+
+
+# ---------------------------------------------------------------------
+#  OBECNÉ
+# ---------------------------------------------------------------------
+[obecne]
+# Kolik stránek výsledků projít u každého hledání (jedna stránka ≈ 30 inzerátů).
+max_stranek = 3
+
+# Kolik detailů inzerátů smí program stáhnout za jeden běh.
+# Detail je potřeba kvůli popisu práce (směny, home office…). Stahují se jen
+# nové inzeráty, které prošly filtry, a nejslibnější jako první. Co se
+# nevejde, stáhne se v dalším běhu.
+limit_detailu = 40
+
+# Prodleva mezi požadavky na web v sekundách (náhodně v tomto rozmezí).
+# Nesnižuj ji: portály by tě mohly zablokovat a je to i otázka slušnosti.
+prodleva_od = 1.0
+prodleva_do = 3.0
+
+# Jak dlouho čekat na odpověď webu (sekundy).
+timeout = 20
+
+
+# ---------------------------------------------------------------------
+#  HLEDÁNÍ
+# ---------------------------------------------------------------------
+#  Každé hledání začíná řádkem [[hledani]] (DVOJITÉ závorky) a můžeš jich
+#  mít libovolně mnoho. Postup:
+#    1. Otevři portál v prohlížeči a nastav filtry (místo, okruh, obor…).
+#    2. Zkopíruj celou adresu z adresního řádku.
+#    3. Vlož ji sem do url = "...".
+#  Program pak projde přesně to, co vidíš v prohlížeči.
+#
+#  Podporované portály: jobs.cz, prace.cz, jobscontact.cz
+#
+#  MZDU NA WEBU NENASTAVUJ. Filtr mzdy na jobs.cz i prace.cz vyřadí i
+#  inzeráty, které mzdu vůbec neukazují (firma ji portálu zadala, ale
+#  nezveřejnila). Program proto u těchto portálů hledá sám DVAKRÁT: bez
+#  filtru mzdy a s filtrem podle min_mzda (viz [filtry]). Když v adrese
+#  mzdu necháš, program ji odstraní a v e-mailu na to upozorní.
+#  Když se stejný inzerát najde na obou portálech, v e-mailu bude jen
+#  jednou (přednost má jobs.cz, ve sloupci portál uvidíš „jobs.cz + prace.cz“).
+# ---------------------------------------------------------------------
+[[hledani]]
+nazev = "IT v okolí Brna"
+url = "https://www.jobs.cz/prace/brno/?q%5B%5D=it&locality%5Bradius%5D=50"
+
+[[hledani]]
+nazev = "Python v okolí Brna"
+url = "https://www.jobs.cz/prace/brno/?q%5B%5D=python&locality%5Bradius%5D=50"
+# Nepovinné: u tohoto hledání projít jiný počet stránek než v [obecne].
+# max_stranek = 1
+
+# prace.cz: na webu nastav místo a vzdálenost a zkopíruj adresu
+# (minimální mzdu ne, viz výše).
+[[hledani]]
+nazev = "Python na prace.cz, Brno + 40 km"
+url = "https://www.prace.cz/nabidky/?q=python&workLocationIds%5B%5D=M265747%3B40"
+
+# jobscontact.cz (web personální agentury Jobs Contact): vyber obor a místo,
+# nastav okruh a zkopíruj adresu. Okruh je v adrese jako jobFilterRadius=40
+# (bez něj platí 50 km). Mzdu nastavit můžeš i nemusíš: jejich filtr mzdy
+# vyřazuje jen podle viditelné mzdy, stejně jako filtry.min_mzda níže.
+# Firmu tento web neuvádí, v e-mailu bude „Jobs Contact Personal, s.r.o.“.
+# Datum zveřejnění web taky neuvádí, takže filtr max_stari_dni tu nic nevyřadí:
+# první ostrý běh pošle všechny nabídky, další už jen nové.
+[[hledani]]
+nazev = "IT na jobscontact.cz, Brno + 40 km"
+url = "https://www.jobscontact.cz/prace/informacni-technologie/brno?jobFilterRadius=40"
+
+
+# ---------------------------------------------------------------------
+#  FILTRY – co se z výsledků vyřadí
+# ---------------------------------------------------------------------
+[filtry]
+# Inzeráty starší než tolik dní se vyřadí (podle data zveřejnění nebo
+# aktualizace). Když inzerát datum nemá, ponechá se. 0 = filtr vypnutý.
+max_stari_dni = 7
+
+# Totéž pro hledání, které ještě nemělo ostrý běh (úplně první spuštění
+# nebo nově přidané [[hledani]]). Delší okno, abys o starší nabídky
+# nepřišel. Zkušební běh (--dry-run) se nepočítá.
+max_stari_prvni_beh = 30
+
+# Minimální měsíční mzda v Kč (hrubého). Vyřadí se JEN inzerát, který mzdu
+# uvádí a ta je jistě nižší: u rozpětí „35 000 – 45 000“ rozhoduje horní
+# hranice. Inzerát bez mzdy se nikdy nevyřadí. 0 = filtr vypnutý.
+#
+# Inzeráty BEZ uvedené mzdy: u jobs.cz a prace.cz program každé hledání
+# projde ještě jednou s filtrem mzdy portálu (ten zná i mzdu, kterou firma
+# nezveřejnila). Ve sloupci Mzda pak uvidíš:
+#   „skrytá, podle jobs.cz ≥ 40 000 Kč“ – filtrem prošel (jen informace),
+#   „skrytá, podle jobs.cz pravděpodobně pod minimem“ – filtrem neprošel.
+#     Nevyřadí se, jen dostane srážku hodnoceni.srazka_skryta_mzda.
+# Když druhé hledání neproběhne celé (chyba, limit stránek), nic se
+# neoznačí, protože si nejsme jistí. Druhé hledání čte jen výpisy, detaily
+# se kvůli němu nestahují (limit_detailu se nečerpá).
+# Pravidla [[filtry.mista]] níže se do druhého hledání nepromítnou (portál
+# bere jen jednu částku), použije se tohle min_mzda.
+min_mzda = 40000
+
+# Hodinová mzda se pro porovnání převede na měsíční: hodinovka × tento počet.
+# 173 = 40 hodin týdně.
+hodin_mesicne = 173
+
+# Slova, kvůli kterým se inzerát VYŘADÍ. Hledá se v názvu, štítcích i v popisu.
+#   - velikost písmen a diakritika nehrají roli („směny“ = „SMENY“),
+#   - hledá se celé slovo: „it“ nenajde „digitalizace“,
+#   - hvězdička na konci = libovolná koncovka: „obchodní zástup*“ najde
+#     „obchodní zástupce“ i „obchodního zástupce“,
+#   - hvězdička na začátku = libovolný začátek slova: „*směn*“ najde
+#     i „dvousměnný“ a „třísměnný“. Povolená JEN u slov s aspoň 4 znaky
+#     (bez hvězdiček). Kratší („*it*“) by se našlo uvnitř spousty jiných
+#     slov, proto se takové slovo vynechá a program na to upozorní,
+#   - hvězdička může být i uprostřed fráze: „pružn* pracovní dob*“ najde
+#     „pružnou pracovní dobu“ i „Pružná pracovní doba“,
+#   - SKUPINA SYNONYM: varianty oddělené svislítkem „|“ v jednom zápisu,
+#     např. "home office | hybridní* | remote". Platí, když se najde
+#     kterákoli varianta. Pravidla pro hvězdičky platí pro každou variantu
+#     zvlášť. Skupiny fungují ve všech čtyřech sekcích slov.
+#  Pozor: platí natvrdo. Slovo „směny“ by vyřadilo i inzerát s větou
+#  „nepracujeme na směny“. Taková slova radši jen ober o body
+#  (záporné číslo v [hodnoceni.slova]).
+vyradit = ["3směnný", "třísměnný", "nepřetržitý provoz", "obchodní zástup*"]
+
+# Totéž, ale hledá se JEN v názvu pozice. Hodí se pro slova, která v popisu
+# bývají nevinně („obchodní oddělení“), ale v názvu znamenají jinou práci.
+vyradit_v_nazvu = ["obchodník", "obchodnice"]
+
+# Místa s jiným minimem mzdy. Když lokalita inzerátu OBSAHUJE zadaný text,
+# platí místo min_mzda tohle minimum. Pravidel můžeš mít víc a použije se
+# první, které sedí. Každé začíná řádkem [[filtry.mista]].
+[[filtry.mista]]
+obsahuje = "Praha"
+min_mzda = 60000
+
+
+# ---------------------------------------------------------------------
+#  HODNOCENÍ – kolik bodů dostane inzerát
+# ---------------------------------------------------------------------
+[hodnoceni]
+# Když je slovo přímo v názvu pozice, body se násobí tímto číslem.
+nasobek_v_nazvu = 2
+
+# Inzeráty s nižším skóre se vyřadí. Zakomentuj (# na začátek), pokud chceš
+# vidět všechno, co prošlo filtry.
+# min_skore = 5
+
+# Srážka pro inzerát se skrytou mzdou „pravděpodobně pod minimem“ (podle
+# filtru mzdy portálu, viz filtry.min_mzda). Záporné číslo. 0 = jen označit
+# ve sloupci Mzda, bez srážky. Platí i pro body v názvu (sekce bez popisu).
+srazka_skryta_mzda = -10
+
+# Klíčová slova a body ve tvaru  "slovo" = body
+# Hledá se v názvu pozice (body × nasobek_v_nazvu), ve štítcích i v popisu.
+# Pravidla zápisu stejná jako u filtrů (hvězdička, bez ohledu na diakritiku).
+# ZÁPORNÉ číslo body ubírá – tak se řeší slova, která inzerát nemají
+# vyřadit, jen posunout níž („směn*“ najde i „nepracujeme na směny“).
+#
+# SKUPINY SYNONYM "a | b | c" = body:
+#   - skupina se v jednom inzerátu počítá NEJVÝŠ JEDNOU, i když se najde
+#     víc variant (bez skupiny by se body za synonyma sčítaly),
+#   - platí nejlepší místo nálezu: název (body × nasobek_v_nazvu),
+#     jinak štítek, jinak popis,
+#   - ve sloupci „Proč“ je vidět, která varianta se našla.
+#
+# DELŠÍ SHODA MÁ PŘEDNOST: když výskyt kratšího zápisu leží celý uvnitř
+# výskytu delšího zápisu, kratší se v tom místě nezapočítá. Příklad:
+#     "python vývojář*" = 20
+#     "python*" = 15
+#   popis „Hledáme Python vývojáře do týmu.“ → 20, ne 35
+#   („Python“ je jen uvnitř „Python vývojáře“).
+#   Je-li „Python“ v textu ještě jinde („testy píšeme v Pythonu“), ten
+#   výskyt se počítá normálně → 20 + 15 = 35.
+# Díky tomu jde mít obecné slovo ve skupině a vedle konkrétnější frázi
+# s jinými body (viz home office níže). Filtrů vyradit se pravidlo netýká.
+[hodnoceni.slova]
+# Pozor na skloňování: "python" nenajde „v Pythonu“. Piš "python*".
+"python*" = 15
+"automatizac*" = 10
+"správa sítě" = 8
+"linux" = 5
+# Home office: skupina včetně obecného „z domova“…
+"home office | práce převážně z domova | z domova | hybridní* | remote | práce na dálku" = 8
+# …a konkrétnější slabá fráze vedle. Štítek jobs.cz „Možnost OBČASNÉ práce
+# z domova“ (bývá i v popisu jako benefit) dá díky pravidlu delší shody jen 2,
+# kdežto věta „3 dny v týdnu z domova“ dá 8.
+"občasné práce z domova" = 2
+# Pružná pracovní doba jako jedna skupina (benefit jobs.cz zní
+# „Flexibilní začátek/konec pracovní doby“).
+"flexibilní začátek* | pružn* pracovní dob* | flexibilní pracovní dob*" = 10
+"směn*" = -30
+"prodej*" = -10
+
+# Slova, která se počítají JEN v názvu pozice. Pro krátká nebo obecná slova,
+# která by v popisu chytala nesmysly: „IT“ bývá v popisu všude („IT oddělení
+# vám nastaví notebook“), ale v názvu pozice znamená IT práci.
+# Násobek nasobek_v_nazvu se tady nepoužívá, body napiš rovnou.
+[hodnoceni.slova_v_nazvu]
+"it" = 10
+
+
+# ---------------------------------------------------------------------
+#  SOUHRN V E-MAILU
+# ---------------------------------------------------------------------
+[souhrn]
+# Hranice skóre: nabídky s tímto skóre a vyšším jdou do hlavní tabulky,
+# ostatní do sbalené sekce „Ostatní“ pod ní (v Gmailu a Outlooku se
+# nesbalí, ale jsou to jen úsporné řádky). Zakomentuj = vše v hlavní tabulce.
+hranice_skore = 15
+
+# Zobrazit na konci e-mailu vyřazené inzeráty s důvodem (hodí se na ladění filtrů).
+zobrazit_vyrazene = true
+# Kolik vyřazených nejvýš ukázat.
+max_vyrazenych = 30
+
+
+# ---------------------------------------------------------------------
+#  E-MAIL (odesílání bude hotové ve fázi 4; heslo patří do secrets.toml)
+# ---------------------------------------------------------------------
+[email]
+# Výchozí hodnoty jsou pro Seznam. Gmail: smtp_server = "smtp.gmail.com",
+# port = 465 a místo běžného hesla je potřeba HESLO APLIKACE
+# (Účet Google → Zabezpečení → Hesla aplikací; vyžaduje dvoufázové ověření).
+smtp_server = "smtp.seznam.cz"
+port = 465
+ssl = true
+uzivatel = "tvuj.email@seznam.cz"
+odesilatel = "tvuj.email@seznam.cz"
+prijemci = ["tvuj.email@seznam.cz"]
+predmet = "Job Agent – nabídky práce"
+
+
+# ---------------------------------------------------------------------
+#  AI HODNOCENÍ (volitelné, bude hotové ve fázi 5; API klíč patří do secrets.toml)
+# ---------------------------------------------------------------------
+[ai]
+# Bez API klíče nebo kreditu program funguje dál s bodováním podle slov.
+zapnuto = false
+model = "claude-haiku-5-5"
+# Kolik inzerátů nejvýš poslat k AI hodnocení za jeden běh (kvůli ceně).
+max_inzeratu = 20
