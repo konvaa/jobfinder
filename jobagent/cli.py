@@ -1,6 +1,7 @@
-"""Příkazová řádka: `jobagent run [--dry-run]`, `jobagent sample <url>`, `jobagent vysvetli <url>`.
+"""Příkazová řádka: `jobagent run [--dry-run]`, `test-email [--nahled]`, `sample <url>`, `vysvetli <url>`.
 
-Vrací návratový kód (0 = OK, 1 = chyba, 2 = chyba v nastavení). Proč na tom
+Vrací návratový kód (0 = OK, 1 = chyba, 2 = chyba v nastavení, 3 = e-mail se
+nepodařilo odeslat). Proč na tom
 záleží: Plánovač úloh Windows ho ukazuje ve sloupci „Výsledek posledního
 spuštění“, takže selhání je vidět i bez otevírání logu.
 
@@ -15,10 +16,11 @@ import logging
 import re
 import sys
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from jobagent import __version__, collectors, emailer, explain, paths, pipeline
+from jobagent import __version__, collectors, emailer, explain, mailer, paths, pipeline
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
 from jobagent.log import setup_logging
@@ -36,6 +38,13 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="celý běh: sběr → filtry → hodnocení → e-mail")
     run.add_argument("--dry-run", action="store_true", help="nic neposílat, uložit e-mail jako HTML a otevřít ho")
     run.add_argument("--no-open", action="store_true", help="u --dry-run neotvírat prohlížeč")
+
+    test = sub.add_parser(
+        "test-email",
+        help="poslat zkušební e-mail a ověřit nastavení [email] (nic nesbírá, nic neoznačuje)",
+    )
+    test.add_argument("--nahled", action="store_true",
+                      help="místo krátké zprávy poslat poslední náhled z vystup/ (jak bude vypadat v poště)")
 
     sample = sub.add_parser(
         "sample",
@@ -63,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "run":
             return cmd_run(args)
+        if args.command == "test-email":
+            return cmd_test_email(args)
         if args.command == "sample":
             return cmd_sample(args)
         if args.command == "vysvetli":
@@ -83,35 +94,138 @@ def _make_fetcher(cfg) -> Fetcher:
     return Fetcher(delay_min=cfg.general.delay_min, delay_max=cfg.general.delay_max, timeout=cfg.general.timeout)
 
 
+# Návratové kódy (Plánovač úloh je ukazuje ve sloupci „Výsledek posledního spuštění“).
+EXIT_OK, EXIT_ERROR, EXIT_CONFIG, EXIT_MAIL = 0, 1, 2, 3
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     cfg = load_config(paths.config_file(), paths.secrets_file())
     for warning in cfg.warnings:
         log.warning("%s", warning)
     if not args.dry_run:
-        # Fáze 4 doplní odesílání. Do té doby radši jasná hláška než tichý „úspěch“.
-        log.error("Odesílání e-mailu zatím není hotové (fáze 4). Spusť: jobagent run --dry-run")
-        return 1
+        # Chyby v [email] odhalit hned, ne až po deseti minutách stahování.
+        try:
+            mailer.check_settings(cfg.email, cfg.secrets.email_password)
+        except mailer.MailError as exc:
+            log.error("%s Ověření nastavení: jobagent test-email", exc)
+            return EXIT_CONFIG
 
+    threshold = cfg.summary.score_threshold
     storage = Storage(paths.db_file())
     try:
         report = pipeline.run(
-            cfg, storage, _make_fetcher(cfg), dry_run=True, unknown_samples_dir=paths.unknown_samples_dir()
+            cfg, storage, _make_fetcher(cfg), dry_run=args.dry_run, unknown_samples_dir=paths.unknown_samples_dir()
         )
+        now = datetime.now()
+        html_body, text_body, attachment = emailer.build_bodies(report, paths.templates_dir(), now, threshold)
+        # Celý souhrn se uloží vždy: u --dry-run je to náhled, u ostrého běhu
+        # záznam toho, co odešlo (a podklad pro `test-email --nahled`).
+        preview = emailer.save_preview(attachment or html_body, paths.output_dir(), now)
+        log.info("Souhrn uložen: %s", preview)
+        for warning in report.warnings:
+            log.warning("%s", warning)
+
+        if args.dry_run:
+            if not args.no_open:
+                emailer.open_in_browser(preview)
+            mail_failed = False
+        else:
+            mail_failed = not _deliver(cfg, storage, report, now, html_body, text_body, attachment, threshold)
     finally:
         storage.close()
 
-    html = emailer.render(report, paths.templates_dir(), threshold=cfg.summary.score_threshold)
-    preview = emailer.save_preview(html, paths.output_dir())
-    log.info("Náhled e-mailu: %s", preview)
-    for warning in report.warnings:
-        log.warning("%s", warning)
-    if not args.no_open:
-        emailer.open_in_browser(preview)
+    if mail_failed:
+        return EXIT_MAIL  # má přednost: neodeslaný e-mail je to, co uživatel musí řešit
     # Selhala nebo se přeskočila všechna hledání (výpadek sítě, blokace)?
     # Návratový kód 1, aby to bylo vidět v Plánovači úloh, i když e-mail
     # s upozorněním vznikl.
     failed = report.errors + report.skipped
-    return 1 if report.stats and failed == len(report.stats) else 0
+    return EXIT_ERROR if report.stats and failed == len(report.stats) else EXIT_OK
+
+
+def _deliver(cfg, storage: Storage, report: pipeline.RunReport, now: datetime,
+             html_body: str, text_body: str, attachment: str | None, threshold: int | None) -> bool:
+    """Odeslat souhrn; jen při úspěchu označit nabídky jako odeslané. True = odesláno."""
+    msg = mailer.build_message(
+        cfg.email, emailer.subject(report, cfg.email.subject, threshold), text_body, html_body,
+        attachment_html=attachment, attachment_name=emailer.ATTACHMENT_NAME, now=now,
+    )
+    size_kb = len(msg.as_bytes()) / 1024
+    log.info("Odesílám souhrn (%.0f kB%s) na %s.", size_kb, ", celý v příloze" if attachment else "", msg["To"])
+    try:
+        mailer.send(msg, cfg.email, cfg.secrets.email_password)
+    except mailer.MailError as exc:
+        html_path, eml_path = mailer.save_failed(msg, attachment or html_body, paths.output_dir(), now)
+        log.error("E-mail se nepodařilo odeslat: %s", exc)
+        if exc.technical:
+            log.error("Technicky: %s", exc.technical)
+        log.error("Nic se neoznačilo jako odeslané, příští běh pošle tytéž nabídky znovu. "
+                  "Souhrn je uložený v %s (a k otevření v poštovním programu %s). "
+                  "Nastavení ověříš příkazem: jobagent test-email", html_path, eml_path.name)
+        return False
+    # Pořadí „odeslat → označit“ je záměrné: pád mezi tím = duplicita, ne ztráta.
+    storage.mark_sent(report.shown_jobs, report.rejected, now, run_id=report.run_id)
+    log.info("Odesláno, %d nabídek označeno jako odeslané.", len(report.shown_jobs))
+    return True
+
+
+def cmd_test_email(args: argparse.Namespace) -> int:
+    cfg = load_config(paths.config_file(), paths.secrets_file())
+    for warning in cfg.warnings:
+        log.warning("%s", warning)
+    e = cfg.email
+    # Heslo se nikdy nevypisuje, ani jeho délka: stačí vědět, jestli je vyplněné.
+    log.info("Server: %s:%s (%s), uživatel: %s, odesílatel: %s, příjemci: %s, heslo: %s",
+             e.smtp_server, e.port, e.security, e.user or "—", e.sender or e.user or "—",
+             ", ".join(e.recipients) or "—", "vyplněné" if cfg.secrets.email_password else "CHYBÍ")
+    now = datetime.now()
+
+    if args.nahled:
+        previews = sorted(paths.output_dir().glob("email_*.html"), key=lambda path: path.stat().st_mtime)
+        if not previews:
+            log.error("Ve složce %s není žádný náhled. Nejdřív spusť: jobagent run --dry-run --no-open",
+                      paths.output_dir())
+            return EXIT_ERROR
+        source = previews[-1]
+        html_body = source.read_text(encoding="utf-8")
+        size = len(html_body.encode("utf-8"))
+        log.info("Posílám náhled %s (%.0f kB).", source.name, size / 1024)
+        if size > emailer.BODY_LIMIT_BYTES:
+            # Záměrně se nezkracuje: test má ukázat, jak pošta zachází s velkým e-mailem.
+            log.warning("Náhled má přes %d kB. Gmail takové tělo usekne („Zpráva byla oříznuta“); ostrý běh "
+                        "by v těle nechal jen prvních %d ostatních a celý souhrn dal do přílohy.",
+                        emailer.BODY_LIMIT_BYTES // 1000, emailer.BODY_OTHER_ROWS)
+        subject = f"{e.subject}: test – náhled {source.stem.removeprefix('email_')}"
+        text_body = (f"Zkušební odeslání náhledu {source.name} ({size / 1024:.0f} kB).\n"
+                     "Souhrn je v HTML části zprávy. Nabídky se neoznačily jako odeslané.\n")
+    else:
+        subject = f"{e.subject}: zkušební e-mail"
+        lines = [
+            "Tohle je zkušební e-mail z Job Agenta. Když ho čteš, odesílání funguje.",
+            "",
+            f"Odesláno: {now:%d. %m. %Y %H:%M}",
+            f"Server: {e.smtp_server}:{e.port} ({e.security})",
+            f"Uživatel: {e.user}",
+            f"Příjemci: {', '.join(e.recipients)}",
+            "",
+            "Když zpráva skončila ve spamu, označ ji jako „není spam“.",
+        ]
+        text_body = "\n".join(lines) + "\n"
+        html_body = ("<!DOCTYPE html><html lang=\"cs\"><meta charset=\"utf-8\"><body style=\"font-family:sans-serif\">"
+                     + "".join(f"<p>{escape(line)}</p>" if line else "" for line in lines)
+                     + "</body></html>")
+
+    msg = mailer.build_message(e, subject, text_body, html_body, now=now)
+    try:
+        # Bez opakování: u testu chceš chybu hned, ne za minutu.
+        mailer.send(msg, e, cfg.secrets.email_password, retries=0)
+    except mailer.MailError as exc:
+        log.error("Odeslání selhalo: %s", exc)
+        if exc.technical:
+            log.error("Technicky: %s", exc.technical)
+        return EXIT_MAIL
+    log.info("Hotovo. Zkontroluj schránku %s (případně složku spam).", ", ".join(e.recipients))
+    return EXIT_OK
 
 
 def cmd_sample(args: argparse.Namespace) -> int:

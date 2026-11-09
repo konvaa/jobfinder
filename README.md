@@ -6,9 +6,9 @@ e-mail.
 
 *Česky: [README.cs.md](README.cs.md).*
 
-> **Status:** work in progress. Collecting, filtering, scoring and the e-mail
-> preview work (`run --dry-run`). Sending the e-mail (phase 4), optional AI
-> scoring (phase 5) and a standalone Windows `.exe` (phase 6) are not done yet.
+> **Status:** work in progress. Collecting, filtering, scoring and sending the
+> e-mail summary work. Optional AI scoring (phase 5) and a standalone Windows
+> `.exe` (phase 6) are not done yet.
 > The configuration and all messages are in Czech, because the tool is meant
 > for Czech job portals and Czech-speaking users.
 
@@ -73,10 +73,19 @@ your searches, filters, keywords and points, the e-mail summary and the
 optional AI. Passwords and the API key belong only to `secrets.toml`. Neither
 file is tracked by git.
 
+E-mail: fill in the server, `uzivatel` (the full address) and `prijemci` in
+`[email]`, and the password in `secrets.toml`. Seznam with two-factor
+authentication and Gmail need an **app password** there, not the account
+password. A dedicated sender mailbox is a good idea, so the password in the file
+does not open your main inbox. Check the settings with `test-email`.
+
 ## Usage
 
 ```bat
+python -m jobagent run                    :: live run: collect, score, send the summary
 python -m jobagent run --dry-run          :: full run without sending; opens the e-mail preview in a browser
+python -m jobagent test-email             :: send a short test e-mail (server, password, recipients)
+python -m jobagent test-email --nahled    :: send the latest preview from vystup/ (how it looks in a mail client)
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet
@@ -85,6 +94,12 @@ python -m unittest -v                     :: tests (offline)
 ```
 
 Logs go to `logs/`, the database is `jobagent.db`, previews go to `vystup/`.
+
+Exit codes (shown by Windows Task Scheduler as "Last Run Result"): 0 = OK,
+1 = error (e.g. all searches failed), 2 = configuration error, 3 = the e-mail
+could not be sent. On 3 nothing is marked as sent, the next run sends the same
+offers again, and the unsent summary is saved in `vystup/` (`…_NEODESLANO.html`
+and `.eml`).
 
 ## How it is built
 

@@ -78,13 +78,20 @@ class FirstRunTests(BasePipelineTest):
         old = "Projektový Manager/ka logistiky"
         self.assertIn(old, self.titles(self.run_once(make_web(self.old_listing()))))  # dry-run: první běh
         self.assertIn(old, self.titles(self.run_once(make_web(self.old_listing()))))  # další dry-run: pořád první
-        self.run_once(make_web(self.old_listing()), dry_run=False)  # ostrý běh (bez odeslání)
+        live = self.run_once(make_web(self.old_listing()), dry_run=False)  # ostrý běh, e-mail zatím neodešel
+        self.assertIn(old, self.titles(self.run_once(make_web(self.old_listing()))), "neodeslaný běh se nepočítá")
+        self.deliver(live)  # e-mail odešel → teprve teď je to ostrý běh
         later = self.run_once(make_web(self.old_listing()))
         self.assertNotIn(old, self.titles(later))
         self.assertTrue(any("20 dní, limit 7" in (j.reject_reason or "") for j in later.rejected))
 
+    def deliver(self, report):
+        """Jako cli po úspěšném odeslání, jen bez označení inzerátů (test se týká okna
+        prvního běhu, ne odeslaných inzerátů): běh se zapíše jako doručený."""
+        self.storage.mark_sent([], [], datetime(2026, 11, 4, 10), run_id=report.run_id)
+
     def test_new_search_gets_its_own_first_run(self):
-        self.run_once(make_web(self.old_listing()), dry_run=False)
+        self.deliver(self.run_once(make_web(self.old_listing()), dry_run=False))
         new_search = type(self.cfg.searches[0])(name="Nové", url=LISTING_URL + "&nove=1")
         self.cfg.searches.append(new_search)
         report = self.run_once(make_web(self.old_listing()))

@@ -29,7 +29,7 @@ from jobagent.models import HiddenSalary, Job
 NO_TEXT_NOTE = "detail bez textu (stránka se načítá JavaScriptem) – hodnoceno jen podle výpisu"
 FAILED_NOTE = "detail se opakovaně nepodařilo stáhnout – hodnoceno jen podle výpisu"
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA_V1 = """
 CREATE TABLE jobs (
@@ -97,6 +97,11 @@ _MIGRATE_V5_INDEX = "CREATE INDEX IF NOT EXISTS idx_jobs_alt ON jobs(alt_key)"
 # Jen kvůli `jobagent vysvetli`: denní běh ji počítá vždy znovu z obou hledání.
 _MIGRATE_V6 = ("hidden_salary", "ALTER TABLE jobs ADD COLUMN hidden_salary TEXT NOT NULL DEFAULT ''")
 
+# v7: ostrý běh se počítá (okno prvního běhu hledání, varování o rostoucím
+# „čeká na detail“) až po úspěšném odeslání e-mailu. Když se e-mail nepošle,
+# další běh se chová, jako by tento neproběhl, a o nic se nepřijde.
+_MIGRATE_V7 = ("delivered", "ALTER TABLE runs ADD COLUMN delivered INTEGER NOT NULL DEFAULT 0", "runs")
+
 
 class Storage:
     def __init__(self, path: Path | str):
@@ -122,15 +127,20 @@ class Storage:
             self.conn.execute(_MIGRATE_V5_INDEX)
         if version < 6:
             self._add_column(*_MIGRATE_V6)
+        if version < 7:
+            self._add_column(*_MIGRATE_V7)
+            # Ostrý běh před v7 nešel spustit (odesílání neexistovalo). Kdyby přesto
+            # nějaký v DB byl, počítal se jako ostrý: význam zůstane stejný.
+            self.conn.execute("UPDATE runs SET delivered=1 WHERE dry_run=0")
         # Další verze: if version < 3: ALTER TABLE ... – vždy jen přidávat, nikdy mazat.
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
-    def _add_column(self, name: str, statement: str) -> None:
+    def _add_column(self, name: str, statement: str, table: str = "jobs") -> None:
         """ALTER TABLE jen když sloupec chybí. Proč: přerušená migrace (pád,
         vypnutý počítač) se při dalším spuštění dokončí, místo aby spadla
         na „duplicate column“."""
-        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(jobs)")}
+        columns = {row[1] for row in self.conn.execute(f"PRAGMA table_info({table})")}
         if name not in columns:
             self.conn.execute(statement)
 
@@ -263,13 +273,20 @@ class Storage:
         ).fetchone()
         return row["key"] if row else None
 
-    def mark_sent(self, jobs: list[Job], rejected: list[Job], now: datetime) -> None:
-        """Volá se až PO úspěšném odeslání e-mailu – když odeslání selže, nic se neztratí."""
+    def mark_sent(self, jobs: list[Job], rejected: list[Job], now: datetime, run_id: int | None = None) -> None:
+        """Volá se až PO úspěšném odeslání e-mailu – když odeslání selže, nic se neztratí.
+
+        Inzeráty a příznak doručení běhu se zapíší v jedné transakci: buď obojí,
+        nebo nic. (Pád mezi odesláním a tímto zápisem znamená duplicitu v dalším
+        e-mailu, nikdy ztracený inzerát – vědomě zvolené pořadí.)
+        """
         stamp = now.isoformat(timespec="seconds")
         self.conn.executemany("UPDATE jobs SET sent_at=? WHERE key=?", [(stamp, j.key) for j in jobs])
         self.conn.executemany(
             "UPDATE jobs SET rejected_reported_at=? WHERE key=?", [(stamp, j.key) for j in rejected]
         )
+        if run_id is not None:
+            self.conn.execute("UPDATE runs SET delivered=1 WHERE id=?", (run_id,))
         self.conn.commit()
 
     # ------------------------------------------------------------ běhy a statistiky
@@ -296,14 +313,14 @@ class Storage:
         )
 
     def had_live_run(self, url: str, exclude_run: int) -> bool:
-        """Mělo tohle hledání už úspěšný ostrý běh? Dry-run se nepočítá.
+        """Mělo tohle hledání už úspěšný ostrý běh? Dry-run ani neodeslaný e-mail se nepočítá.
 
         Klíčem je URL: kamarád může hledání přejmenovat, ale nová URL je
         z pohledu portálu jiné hledání se svými staršími inzeráty.
         """
         row = self.conn.execute(
             """SELECT 1 FROM search_stats s JOIN runs r ON r.id = s.run_id
-               WHERE s.url=? AND s.run_id<>? AND r.dry_run=0 AND s.error IS NULL LIMIT 1""",
+               WHERE s.url=? AND s.run_id<>? AND r.dry_run=0 AND r.delivered=1 AND s.error IS NULL LIMIT 1""",
             (url, exclude_run),
         ).fetchone()
         return row is not None
@@ -311,7 +328,7 @@ class Storage:
     def recent_live_summaries(self, exclude_run: int, limit: int) -> list[dict]:
         """Souhrny posledních ostrých běhů (nejnovější první). Dry-runy se nepočítají."""
         rows = self.conn.execute(
-            """SELECT summary FROM runs WHERE dry_run=0 AND id<>? AND summary IS NOT NULL
+            """SELECT summary FROM runs WHERE dry_run=0 AND delivered=1 AND id<>? AND summary IS NOT NULL
                ORDER BY id DESC LIMIT ?""",
             (exclude_run, limit),
         ).fetchall()

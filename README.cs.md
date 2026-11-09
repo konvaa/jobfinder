@@ -6,9 +6,9 @@ e-mailem.
 
 *English: [README.md](README.md).*
 
-> **Stav:** rozpracováno. Sběr, filtry, bodování a náhled e-mailu fungují
-> (`run --dry-run`). Odesílání e-mailu (fáze 4), volitelné AI hodnocení
-> (fáze 5) a samostatný `.exe` pro Windows (fáze 6) zatím nejsou.
+> **Stav:** rozpracováno. Sběr, filtry, bodování a odesílání souhrnu e-mailem
+> fungují. Volitelné AI hodnocení (fáze 5) a samostatný `.exe` pro Windows
+> (fáze 6) zatím nejsou.
 > Návod pro kamarády krok za krokem (exe, bez instalace Pythonu) přibude
 > ve fázi 6. Tohle je zatím návod pro spuštění ze zdrojáků.
 
@@ -87,10 +87,19 @@ Po aktivaci stačí `python` (ukazuje do `.venv`). Bez aktivace funguje
 filtry, slova a body, souhrn e-mailem a volitelné AI. Hesla a API klíč patří
 jen do `secrets.toml`. Ani jeden soubor není v gitu.
 
+E-mail: v `[email]` vyplň server, `uzivatel` (celá adresa) a `prijemci`, do
+`secrets.toml` heslo. U Seznamu se zapnutým dvoufázovým ověřením a u Gmailu
+patří do `secrets.toml` **heslo pro aplikace**, ne heslo k účtu. Doporučení:
+na odesílání si založ samostatnou schránku, ať heslo v souboru neotevírá tvou
+hlavní poštu. Nastavení ověříš příkazem `test-email`.
+
 ## Příkazy
 
 ```bat
+python -m jobagent run                 :: ostrý běh: sběr, hodnocení, odeslání souhrnu
 python -m jobagent run --dry-run       :: běh bez odeslání, náhled e-mailu se otevře v prohlížeči
+python -m jobagent test-email          :: krátký zkušební e-mail (ověří server, heslo, příjemce)
+python -m jobagent test-email --nahled :: pošle poslední náhled z vystup\ (jak vypadá v poště)
 python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem
@@ -98,6 +107,12 @@ python -m jobagent vysvetli soubor.html  :: totéž offline nad uloženou strán
 python -m jobagent sample <url>        :: uloží HTML stránky do samples\private\ (není v gitu)
 python -m unittest -v                  :: testy (offline)
 ```
+
+Návratové kódy (Plánovač úloh je ukazuje ve sloupci „Výsledek posledního
+spuštění“): 0 = OK, 1 = chyba (např. selhala všechna hledání), 2 = chyba
+v nastavení, 3 = e-mail se nepodařilo odeslat. Při kódu 3 se nic neoznačí jako
+odeslané, příští běh pošle tytéž nabídky znovu a neodeslaný souhrn leží ve
+`vystup\` (`…_NEODESLANO.html` a `.eml`).
 
 ## Kde co je
 

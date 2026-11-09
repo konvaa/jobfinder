@@ -19,7 +19,14 @@ Thunderbird a Apple Mail. Gmail, Outlook a webmaily značku ignorují
 a ukážou obsah rozbalený, proto jsou tam úsporné jednořádkové záznamy,
 ne celá tabulka.
 
-Odesílání přes SMTP přibude ve fázi 4.
+Textová verze (templates/email.txt) vzniká ze stejných dat jako HTML. Proč
+obě: klienti bez HTML ji zobrazí a spamové filtry hodnotí zprávu jen s HTML
+hůř. Odesílání samo je v mailer.py.
+
+Velikost: Gmail zkracuje HTML nad zhruba 100 kB („Zpráva byla zkrácena“).
+Když je souhrn větší (typicky první ostrý běh se stovkami nabídek), jde celý
+jako příloha a tělo má hlavní tabulku, „podle názvu“ a prvních
+BODY_OTHER_ROWS „ostatních“ (viz build_bodies).
 """
 
 from __future__ import annotations
@@ -38,7 +45,11 @@ from jobagent.pipeline import RunReport
 
 log = logging.getLogger(__name__)
 
-TEMPLATE_FILES = ("email.html", "nabidka.html", "ostatni.html", "vyrazeno.html")
+TEMPLATE_FILES = ("email.html", "nabidka.html", "ostatni.html", "vyrazeno.html", "email.txt")
+# Nad tuto velikost HTML jde celý souhrn jako příloha (Gmail zkracuje kolem 102 kB).
+BODY_LIMIT_BYTES = 100_000
+BODY_OTHER_ROWS = 20
+ATTACHMENT_NAME = "job-agent-souhrn.html"
 
 
 class TemplateError(Exception):
@@ -70,7 +81,9 @@ def split_by_threshold(jobs: list[Job], threshold: int | None) -> tuple[list[Job
     return [j for j in jobs if j.score >= threshold], [j for j in jobs if j.score < threshold]
 
 
-def render(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None) -> str:
+def render(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None,
+           others_limit: int | None = None) -> str:
+    """HTML souhrnu. others_limit: kolik „ostatních“ ukázat (zbytek je v příloze)."""
     now = now or datetime.now()
     page = _load(templates_dir, "email.html")
     row = _load(templates_dir, "nabidka.html")
@@ -104,13 +117,17 @@ def render(report: RunReport, templates_dir: Path, now: datetime | None = None, 
 
     others_html = ""
     if others:
-        other_rows = "\n".join(other_row.safe_substitute(_job_values(job)) for job in others)
+        shown_others = others if others_limit is None else others[:others_limit]
+        other_rows = "\n".join(other_row.safe_substitute(_job_values(job)) for job in shown_others)
+        rest = len(others) - len(shown_others)
+        more = (f'<p style="margin:8px 0 0;color:#555;font-size:13px">… a dalších {rest} v příloze '
+                f"{_e(ATTACHMENT_NAME)}.</p>") if rest else ""
         others_html = (
             '<details style="margin:24px 0 0"><summary style="cursor:pointer;font-size:15px;font-weight:bold;color:#333">'
             f"Ostatní nabídky ({len(others)})"
             + (f" – skóre pod {threshold} nebo bez popisu" if threshold is not None else " – bez popisu")
             + "</summary>"
-            f'<div style="margin-top:8px">{other_rows}</div></details>'
+            f'<div style="margin-top:8px">{other_rows}</div>{more}</details>'
         )
 
     rejected_html = ""
@@ -124,10 +141,20 @@ def render(report: RunReport, templates_dir: Path, now: datetime | None = None, 
             f"{rejected_rows}</table>"
         )
 
+    attachment_note = ""
+    if others_limit is not None and len(others) > others_limit:
+        attachment_note = (
+            '<p style="margin:8px 0;padding:8px 12px;background:#e3f2fd;border-radius:4px;font-size:14px">'
+            f"Souhrn je dnes dlouhý, celý je v příloze <strong>{_e(ATTACHMENT_NAME)}</strong> "
+            "(otevře se v prohlížeči). Tady je hlavní tabulka, nabídky podle názvu a "
+            f"prvních {others_limit} ostatních.</p>"
+        )
+
     return page.safe_substitute(
         datum=_e(now.strftime("%d. %m. %Y %H:%M")),
-        stav=_status_line(report, len(main), len(others)),
-        detaily=_details_line(report),
+        stav=_e(_status_line(report, len(main), len(others))),
+        detaily=_e(_details_line(report)),
+        priloha=attachment_note,
         varovani=_warnings_html(report),
         pocet_novych=str(len(main)),
         nabidky=rows,
@@ -165,7 +192,7 @@ def salary_label(job: Job) -> str:
 
 
 def _status_line(report: RunReport, main: int, others: int) -> str:
-    """Stavový řádek, který se sečte beze zbytku (viz účetnictví v pipeline.py).
+    """Stavový řádek (čistý text; HTML ho escapuje), sečte se beze zbytku (viz pipeline.py).
 
     nalezeno = unikátních + opakovaných
     unikátních = nových + čeká na detail + vyřazeno [+ dříve vyřazené + duplicity + už odesláno]
@@ -209,7 +236,7 @@ def _status_line(report: RunReport, main: int, others: int) -> str:
     parts.append(f"chyby {report.errors}")
     if report.skipped:
         parts.append(f"přeskočeno {report.skipped}")
-    return _e(" · ".join(parts))
+    return " · ".join(parts)
 
 
 def _details_line(report: RunReport) -> str:
@@ -222,7 +249,7 @@ def _details_line(report: RunReport) -> str:
     if below or above:
         # Jen nabídky v e-mailu; inzeráty s viditelnou mzdou se sem nepočítají.
         parts.append(f"skrytá mzda: {below} pravděpodobně pod minimem, {above} nad minimem")
-    return _e(" · ".join(parts))
+    return " · ".join(parts)
 
 
 def _warnings_html(report: RunReport) -> str:
@@ -234,6 +261,136 @@ def _warnings_html(report: RunReport) -> str:
         'margin:12px 0;border-radius:4px;font-size:14px"><strong>Upozornění</strong>'
         f'<ul style="margin:6px 0 0 18px;padding:0">{items}</ul></div>'
     )
+
+
+def _count_cz(n: int, one: str, few: str, many: str) -> str:
+    """Česká čísla: 1 nová, 2–4 nové, 0 a 5+ nových."""
+    return f"{n} {one if n == 1 else few if 2 <= n <= 4 else many}"
+
+
+def subject(report: RunReport, prefix: str, threshold: int | None = None) -> str:
+    """Předmět se souhrnem. „⚠“ na začátku, když některý portál selhal nebo se přeskočil.
+
+    Proč počty v předmětu: v seznamu zpráv je vidět, jestli stojí za to e-mail
+    otevřít, a „dnes nic nového“ potvrzuje, že program běžel.
+    """
+    prefix = (prefix or "Job Agent").strip()
+    if report.shown_total:
+        main, _ = split_by_threshold(report.new_jobs, threshold)
+        text = f"{prefix}: {_count_cz(report.shown_total, 'nová', 'nové', 'nových')} ({len(main)} v hlavní tabulce)"
+    else:
+        text = f"{prefix}: dnes nic nového"
+    failed = sorted({s.portal or s.name for s in report.stats if s.error or s.skipped})
+    if failed:
+        text = f"⚠ {text} – chyba: {', '.join(failed)}"
+    return text
+
+
+def render_text(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None,
+                others_limit: int | None = None) -> str:
+    """Čistě textová verze stejného souhrnu (šablona templates/email.txt)."""
+    now = now or datetime.now()
+    page = _load_text(templates_dir, "email.txt")
+    main, others = split_by_threshold(report.new_jobs, threshold)
+    others = others + report.no_text_other
+
+    def full(job: Job, score: int | None = None) -> str:
+        v = _job_plain(job, score)
+        lines = [f"* {v['pozice']}", f"  {v['firma']} · {v['misto']} · {v['mzda']} · skóre {v['skore']} · {v['portal']}",
+                 f"  Proč: {v['zduvodneni']}"]
+        if v["poznamka"]:
+            lines.append(f"  Pozn.: {v['poznamka']}")
+        lines.append(f"  {v['odkaz']}")
+        return "\n".join(lines)
+
+    def compact(job: Job) -> str:
+        v = _job_plain(job)
+        return f"* [{v['skore']}] {v['pozice']} – {v['firma']}, {v['misto']}\n  {v['odkaz']}"
+
+    if main:
+        rows = "\n\n".join(full(j) for j in main)
+    elif others or report.title_jobs:
+        rows = "V hlavní tabulce dnes nic. Podívej se do sekcí níže."
+    else:
+        rows = "Dnes nic nového. Program proběhl v pořádku."
+    title = ""
+    if report.title_jobs:
+        title = (f"ZAJÍMAVÉ PODLE NÁZVU – BEZ POPISU, OTEVŘI RUČNĚ ({len(report.title_jobs)})\n"
+                 "Skóre = jen body za slova v názvu.\n\n"
+                 + "\n\n".join(full(j, score=j.title_score) for j in report.title_jobs))
+    other_text = ""
+    if others:
+        shown = others if others_limit is None else others[:others_limit]
+        other_text = f"OSTATNÍ NABÍDKY ({len(others)})\n\n" + "\n".join(compact(j) for j in shown)
+        if len(shown) < len(others):
+            other_text += f"\n… a dalších {len(others) - len(shown)} v příloze {ATTACHMENT_NAME}."
+    rejected = ""
+    if report.rejected:
+        more = f" (zobrazeno {len(report.rejected)} z {report.rejected_total})" if report.rejected_total > len(report.rejected) else ""
+        rejected = f"VYŘAZENÉ INZERÁTY{more}\n\n" + "\n".join(
+            f"* {j.title} – {j.company or '—'}: {j.reject_reason or ''}" for j in report.rejected)
+    warnings = ""
+    if report.warnings:
+        warnings = "UPOZORNĚNÍ\n" + "\n".join(f"! {w}" for w in report.warnings)
+    note = ""
+    if others_limit is not None and len(others) > others_limit:
+        note = f"Souhrn je dnes dlouhý, celý je v příloze {ATTACHMENT_NAME} (otevře se v prohlížeči)."
+    text = page.safe_substitute(
+        datum=now.strftime("%d. %m. %Y %H:%M"),
+        rezim="NÁHLED (dry-run) – nic nebylo odesláno" if report.dry_run else "",
+        stav=_status_line(report, len(main), len(others)),
+        detaily=_details_line(report),
+        varovani=warnings,
+        priloha=note,
+        pocet_novych=str(len(main)),
+        nabidky=rows,
+        podle_nazvu=title,
+        ostatni=other_text,
+        vyrazene=rejected,
+        hodnoceni=report.scoring_method,
+    )
+    # Prázdné sekce nechají v šabloně prázdné řádky; víc než jeden za sebou je zbytečný.
+    return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
+
+
+def build_bodies(report: RunReport, templates_dir: Path, now: datetime | None = None,
+                 threshold: int | None = None) -> tuple[str, str, str | None]:
+    """(HTML těla, text těla, HTML přílohy nebo None) pro odeslání.
+
+    Celý souhrn se vykreslí vždy. Když přesáhne BODY_LIMIT_BYTES, tělo se
+    zkrátí na prvních BODY_OTHER_ROWS „ostatních“ a celý souhrn jde jako příloha.
+    """
+    full_html = render(report, templates_dir, now, threshold)
+    if len(full_html.encode("utf-8")) <= BODY_LIMIT_BYTES:
+        return full_html, render_text(report, templates_dir, now, threshold), None
+    return (render(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
+            render_text(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
+            full_html)
+
+
+def _load_text(templates_dir: Path, name: str) -> Template:
+    path = templates_dir / name
+    if not path.exists():
+        raise TemplateError(
+            f"Chybí šablona {path}. Složka templates/ musí ležet vedle programu (zkopíruj ji z původního balíčku)."
+        )
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    # Řádky začínající „##“ jsou návod v šabloně (jako <!-- --> v HTML), do e-mailu nejdou.
+    return Template("\n".join(line for line in lines if not line.startswith("##")))
+
+
+def _job_plain(job: Job, score: int | None = None) -> dict[str, str]:
+    return {
+        "pozice": job.title,
+        "firma": job.company or "—",
+        "misto": job.location or "—",
+        "mzda": salary_label(job),
+        "skore": str(job.score if score is None else score),
+        "zduvodneni": ", ".join(job.score_reasons) or "žádné klíčové slovo",
+        "poznamka": job.detail_note,
+        "odkaz": job.url,
+        "portal": " + ".join([job.portal, *job.also_on]),
+    }
 
 
 def save_preview(html_text: str, out_dir: Path, now: datetime | None = None) -> Path:

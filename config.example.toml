@@ -236,19 +236,36 @@ max_vyrazenych = 30
 
 
 # ---------------------------------------------------------------------
-#  E-MAIL (odesílání bude hotové ve fázi 4; heslo patří do secrets.toml)
+#  E-MAIL – kam a přes co se souhrn posílá (heslo patří do secrets.toml)
 # ---------------------------------------------------------------------
+# Souhrn přijde po každém ostrém běhu, i když není nic nového („dnes nic
+# nového“ se stavovým řádkem), abys viděl, že program běžel.
+# Nastavení vyzkoušíš příkazem:  jobagent test-email
 [email]
-# Výchozí hodnoty jsou pro Seznam. Gmail: smtp_server = "smtp.gmail.com",
-# port = 465 a místo běžného hesla je potřeba HESLO APLIKACE
-# (Účet Google → Zabezpečení → Hesla aplikací; vyžaduje dvoufázové ověření).
+# Seznam (seznam.cz, email.cz, post.cz): smtp.seznam.cz, port 465, "ssl".
+# Uživatel je CELÁ e-mailová adresa. Když 465 nejde (blokuje ho síť nebo
+# antivir), zkus port 587 a zabezpeceni = "starttls".
+# Máš-li na Seznamu zapnuté dvoufázové ověření, patří do secrets.toml
+# HESLO PRO APLIKACE (Účet Seznam → Zabezpečení účtu → Dvoufázové ověření
+# → Heslo pro aplikace), ne heslo k účtu.
+#
+# Gmail: smtp_server = "smtp.gmail.com", port = 465, zabezpeceni = "ssl".
+# Gmail vyžaduje HESLO APLIKACE (Účet Google → Zabezpečení → Hesla aplikací;
+# jde to jen se zapnutým dvoufázovým ověřením).
 smtp_server = "smtp.seznam.cz"
 port = 465
-ssl = true
+# "ssl" (port 465) nebo "starttls" (port 587). Nešifrované odesílání program neumí.
+zabezpeceni = "ssl"
+# Přihlašovací jméno k odchozí poště (u Seznamu i Gmailu celá adresa).
 uzivatel = "tvuj.email@seznam.cz"
+# Adresa odesílatele. Nech stejnou jako uzivatel: poskytovatelé obvykle
+# nedovolí odesílat z jiné adresy, než je přihlášený účet.
 odesilatel = "tvuj.email@seznam.cz"
+# Komu souhrn přijde (může jich být víc: ["tvuj.email@seznam.cz", "kamarad@example.com"]).
 prijemci = ["tvuj.email@seznam.cz"]
-predmet = "Job Agent – nabídky práce"
+# Začátek předmětu. Zbytek doplní program: „Job Agent: 5 nových (2 v hlavní
+# tabulce)“, „Job Agent: dnes nic nového“, při chybě portálu „⚠ Job Agent: …“.
+predmet = "Job Agent"
 
 
 # ---------------------------------------------------------------------

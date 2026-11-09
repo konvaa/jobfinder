@@ -7,6 +7,7 @@
     $stav          stavový řádek (portály / nalezeno / nových / vyřazeno / chyby)
     $detaily       kolik detailů se stáhlo, kolik bylo bez textu, kolik čeká
     $varovani      červený rámeček s upozorněními (prázdné, když nic není)
+    $priloha       poznámka, že celý (dlouhý) souhrn je v příloze (jinak prázdné)
     $pocet_novych  počet nabídek v hlavní tabulce (s popisem, nad hranicí skóre)
     $nabidky       řádky tabulky – každý podle šablony nabidka.html
     $podle_nazvu   sekce „Zajímavé podle názvu – bez popisu“ (řádky podle nabidka.html)
@@ -28,6 +29,7 @@
   <p style="margin:0 0 2px;color:#555;font-size:13px">$stav · hodnocení: $hodnoceni</p>
   <p style="margin:0 0 8px;color:#888;font-size:12px">$detaily</p>
   $varovani
+  $priloha
   <h3 style="margin:18px 0 8px;font-size:16px">Nové nabídky ($pocet_novych)</h3>
   <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:14px">
     <tr style="background:#263238;color:#fff;text-align:left">

@@ -1,0 +1,28 @@
+## Textová verze e-mailu Job Agenta (pro klienty bez HTML a spamové filtry).
+## Řádky začínající ## jsou návod a do e-mailu nejdou. Můžeš ji upravit v Poznámkovém bloku.
+## Proměnné jsou stejné jako v email.html:
+##   $datum $rezim $stav $detaily $varovani $priloha $pocet_novych
+##   $nabidky $podle_nazvu $ostatni $vyrazene $hodnoceni
+## Chceš-li napsat obyčejný znak dolaru, napiš $$.
+$rezim
+NABÍDKY PRÁCE – $datum
+
+$stav · hodnocení: $hodnoceni
+$detaily
+
+$varovani
+
+$priloha
+
+NOVÉ NABÍDKY ($pocet_novych)
+
+$nabidky
+
+$podle_nazvu
+
+$ostatni
+
+$vyrazene
+
+--
+Vygeneroval Job Agent. Nastavení najdeš v config.toml vedle programu.

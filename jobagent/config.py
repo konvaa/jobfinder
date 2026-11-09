@@ -83,11 +83,13 @@ class Scoring:
 class EmailCfg:
     smtp_server: str = "smtp.seznam.cz"
     port: int = 465
-    ssl: bool = True
+    # "ssl" = šifrované od začátku (port 465), "starttls" = šifrování se zapne
+    # po připojení (port 587). Nešifrované SMTP program neumí: heslo by šlo sítí čitelně.
+    security: str = "ssl"
     user: str = ""
     sender: str = ""
     recipients: list[str] = field(default_factory=list)
-    subject: str = "Job Agent – nabídky práce"
+    subject: str = "Job Agent"  # předpona předmětu: „Job Agent: 5 nových (2 v hlavní tabulce)“
 
 
 @dataclass
@@ -323,13 +325,14 @@ def load_config(config_path: Path, secrets_path: Path | None = None) -> Config:
     email = EmailCfg(
         smtp_server=e.get("smtp_server", str, "smtp.seznam.cz"),
         port=e.get("port", int, 465),
-        ssl=e.get("ssl", bool, True),
+        security=_email_security(e, warnings, errors),
         user=e.get("uzivatel", str, ""),
         sender=e.get("odesilatel", str, ""),
         recipients=e.get_str_list("prijemci"),
-        subject=e.get("predmet", str, "Job Agent – nabídky práce"),
+        subject=e.get("predmet", str, "Job Agent"),
     )
     e.finish()
+    _check_email(email, warnings)
 
     o = root.sub("souhrn")
     summary = Summary(
@@ -397,6 +400,49 @@ def _word_points(section: _Section, errors: list[str]) -> dict[str, int]:
         if key:
             words[key] = points
     return words
+
+
+SECURITY_PORTS = {"ssl": 465, "starttls": 587}
+
+
+def _email_security(e: "_Section", warnings: list[str], errors: list[str]) -> str:
+    """email.zabezpeceni („ssl“ / „starttls“). Starý klíč ssl = true/false ještě funguje.
+
+    Proč změna: true/false neumí říct STARTTLS, který je potřeba pro záložní
+    port 587 (když poskytovatel internetu nebo antivir blokuje 465).
+    """
+    legacy = e.get("ssl", bool, None)
+    value = e.get("zabezpeceni", str, None)
+    if legacy is not None:
+        new = "ssl" if legacy else "starttls"
+        warnings.append(
+            f'email.ssl = {str(legacy).lower()} je starý zápis. Nahraď ho řádkem  zabezpeceni = "{new}"  '
+            '("ssl" pro port 465, "starttls" pro port 587).'
+            + ("" if legacy else " Nešifrované odesílání program neumí, beru starttls.")
+        )
+        if value is None:
+            value = new
+    value = (value or "ssl").strip().lower()
+    if value not in SECURITY_PORTS:
+        errors.append(f'email.zabezpeceni: má být "ssl" nebo "starttls", je tam "{value}".')
+        return "ssl"
+    return value
+
+
+def _check_email(email: EmailCfg, warnings: list[str]) -> None:
+    """Varování, ne chyby: config se má načíst i bez e-mailu (dry-run, vysvetli)."""
+    expected = SECURITY_PORTS[email.security]
+    other = next(s for s, p in SECURITY_PORTS.items() if p == email.port) if email.port in SECURITY_PORTS.values() else None
+    if other and other != email.security:
+        warnings.append(
+            f'email: port {email.port} obvykle patří k zabezpeceni = "{other}", nastaveno je "{email.security}" '
+            f"(pro {email.security} bývá port {expected}). Když odeslání selže, sjednoť je."
+        )
+    if email.sender and email.user and email.sender.strip().lower() != email.user.strip().lower():
+        warnings.append(
+            f"email: odesilatel ({email.sender}) je jiný než uzivatel ({email.user}). Seznam i Gmail "
+            "obvykle povolí odesílat jen z adresy účtu, pod kterým se program přihlašuje."
+        )
 
 
 def load_secrets(path: Path, errors: list[str], warnings: list[str]) -> Secrets:

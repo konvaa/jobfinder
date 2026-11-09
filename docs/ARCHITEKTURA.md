@@ -112,7 +112,32 @@ dalším běhu. Pamatuje si odeslané a vyřazené inzeráty, stav detailu a po�
 pokusů, ID z jiných portálů, historii hledání a skrytou mzdu (jen pro
 `vysvetli`; denní běh ji vždy počítá znovu).
 
-## 10. Testy a ukázky
+## 10. Odesílání e-mailu
+
+Obecné SMTP ze standardní knihovny (`smtplib`, `email.message`). Výchozí
+hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
+(587 = `"starttls"`). Starý klíč `ssl = true/false` se ještě přečte, s varováním.
+
+- **Zpráva:** `multipart/alternative` s textovou a HTML verzí (textová je
+  pro filtry spamu i pro čtečky bez HTML). Předmět nese počty („5 nových
+  (2 v hlavní tabulce)“, „dnes nic nového“), na začátku „⚠“, když některý
+  portál selhal nebo se přeskočil.
+- **Velikost:** Gmail usekává HTML tělo kolem 100 kB. Nad `BODY_LIMIT_BYTES`
+  zůstane v těle prvních 20 „ostatních“ a celý souhrn jde jako příloha
+  `job-agent-souhrn.html`.
+- **Pořadí „odeslat → označit“:** nabídky a příznak `runs.delivered` se zapíší
+  v jedné transakci až po úspěšném odeslání. Pád mezi tím znamená duplicitu
+  v dalším e-mailu, nikdy ztracený inzerát. Za ostrý běh (delší limit stáří
+  u prvního běhu hledání) se počítá jen doručený běh.
+- **Selhání:** přechodná chyba (síť, časový limit, kód 4xx) se zkusí jednou
+  znovu po 60 s; špatné heslo ani odmítnutý příjemce se neopakují. Chyby se
+  překládají na radu (heslo pro aplikace, port × zabezpečení, antivir
+  kontrolující poštu). Neodeslaný souhrn se uloží do `vystup/` jako
+  `…_NEODESLANO.html` a `.eml`, návratový kód 3.
+- **Heslo:** jen v `secrets.toml`, nikdy se nevypisuje (ani délka). Doporučené
+  je heslo pro aplikace a samostatná odesílací schránka.
+
+## 11. Testy a ukázky
 
 Testy běží offline nad uloženými stránkami v `samples/`. Skutečné stránky jsou
 anonymizované (`tools/anonymize_samples.py`, viz `samples/README.md`): struktura
@@ -120,17 +145,17 @@ HTML zůstává, texty inzerátů a kontakty jsou nahrazené. Test
 `test_anonymized_samples` u autora ověřuje, že se kopie parsují stejně jako
 originály.
 
-## 11. Další fáze
+## 12. Další fáze
 
-- **E-mail (fáze 4):** obecné SMTP z configu. Inzerát se označí jako odeslaný
-  až po úspěšném odeslání, při chybě přijde vše znovu v dalším běhu.
 - **AI hodnocení (fáze 5):** volitelné (Claude Haiku), jen skupina 1, dostává
   očištěný `Job.text`. Cache podle ID inzerátu + hashe hodnoceného textu.
   Opakované hodnocení vyřazených nesmí znovu platit za AI ani stahovat detail.
   Při chybě (klíč, kredit, síť) program pokračuje s bodováním podle slov
   a v e-mailu to uvede.
 - **Exe a Plánovač úloh (fáze 6):** PyInstaller, `install-schedule` se
-  spuštěním po zmeškaném startu, návod krok za krokem.
+  spuštěním po zmeškaném startu, návod krok za krokem. Kandidát: heslo
+  ve Správci pověření Windows (`CredReadW` přes `ctypes`, bez další
+  knihovny) místo čistého textu v `secrets.toml`.
 - **Filtr vzdálenosti:** přibalený seznam obcí a okresů se souřadnicemi
   (offline). Domov + `max_km`, vzdušná čára. U okresu je vzdálenost rozpětí
   (těžiště ± poloměr): jistě v okruhu, jistě mimo (vyřadit), nejisté (ponechat

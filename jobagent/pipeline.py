@@ -72,6 +72,7 @@ class SearchStat:
 class RunReport:
     started: datetime
     dry_run: bool
+    run_id: int | None = None  # řádek v tabulce runs; po odeslání se označí jako doručený
     stats: list[SearchStat] = field(default_factory=list)
     unique: int = 0
     new_jobs: list[Job] = field(default_factory=list)  # skupina 1: s textem, seřazené podle skóre
@@ -102,6 +103,11 @@ class RunReport:
     def shown_total(self) -> int:
         """Všechny nové nabídky v e-mailu (s textem i bez)."""
         return len(self.new_jobs) + len(self.title_jobs) + len(self.no_text_other)
+
+    @property
+    def shown_jobs(self) -> list[Job]:
+        """Nové nabídky, které e-mail ukazuje (v těle nebo v příloze) – po odeslání se označí."""
+        return self.new_jobs + self.title_jobs + self.no_text_other
 
     @property
     def listing_only(self) -> int:
@@ -189,6 +195,7 @@ def run(
     report = RunReport(started=now, dry_run=dry_run)
     report.warnings.extend(cfg.warnings)
     run_id = storage.start_run(now, dry_run)
+    report.run_id = run_id
 
     # 1) Sběr výpisů ---------------------------------------------------------
     jobs: dict[str, Job] = {}
