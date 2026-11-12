@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 
 from jobagent import (
     __version__, collectors, console, credentials, emailer, explain, firstrun, mailer, outputs, paths, pipeline,
-    secrets_file,
+    schedule, secrets_file,
 )
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
@@ -66,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
                           help="uložit bez zkušebního přihlášení (např. bez internetu)")
     sub.add_parser("smaz-heslo", help="smazat heslo k e-mailu ze Správce pověření Windows")
 
+    install = sub.add_parser(
+        "install-schedule",
+        help="naplánovat denní běh v Plánovači úloh Windows (výchozí 7:30, jen když jsi přihlášený)",
+    )
+    install.add_argument("cas", nargs="?", help="čas spuštění, např. 7:30 (výchozí) nebo 18:05")
+    sub.add_parser("uninstall-schedule", help="zrušit denní běh v Plánovači úloh")
+
     sub.add_parser(
         "sablony",
         help="vytvořit složku templates/ s šablonami e-mailu k úpravě (existující soubory nepřepíše)",
@@ -91,11 +98,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # Příkazy, které bez config.toml nemají smysl: u nich první spuštění vytvoří config.
-NEEDS_CONFIG = {"run", "test-email", "nastav-heslo", "smaz-heslo"}
+NEEDS_CONFIG = {"run", "test-email", "nastav-heslo", "smaz-heslo", "install-schedule"}
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    if console.in_background():
+        # JobAgent-planovac.exe / pythonw: žádná konzole. Bez parametrů ho
+        # spustil člověk dvojklikem – jinak by se nestalo vůbec nic viditelného.
+        console.silence_missing_streams()
+        if not argv:
+            console.message_box(
+                f"Tohle je {schedule.PLANNER_EXE}, spouští ho Plánovač úloh na pozadí.\n\n"
+                "Pro ruční ovládání otevři JobAgent.exe ve stejné složce."
+            )
+            return EXIT_OK
     own_window = console.owns_console()
     try:
         return _main(argv)
@@ -125,6 +142,10 @@ def _main(argv: list[str]) -> int:
             return cmd_set_password(args)
         if args.command == "smaz-heslo":
             return cmd_delete_password(args)
+        if args.command == "install-schedule":
+            return cmd_install_schedule(args)
+        if args.command == "uninstall-schedule":
+            return cmd_uninstall_schedule(args)
         if args.command == "sablony":
             return cmd_templates(args)
         if args.command == "sample":
@@ -157,6 +178,7 @@ Průzkumníka napíšeš  cmd  a stiskneš Enter):
   {cmd} run              stáhnout nabídky a poslat souhrn
   {cmd} nastav-heslo     uložit heslo k e-mailu (bezpečně, do Správce pověření)
   {cmd} test-email       poslat zkušební e-mail
+  {cmd} install-schedule naplánovat denní běh (výchozí 7:30), zrušení: uninstall-schedule
   {cmd} sablony          vytvořit složku templates s šablonami e-mailu k úpravě
   {cmd} --help           všechny příkazy
 
@@ -293,6 +315,62 @@ def cmd_delete_password(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _frozen() -> bool:
+    return getattr(sys, "frozen", False)
+
+
+def _schedule_moved_warning() -> str | None:
+    """Jen u exe: úloha v Plánovači ukazuje na jinou složku? (Ze zdrojáků by planě hlásila změnu .venv.)"""
+    if not _frozen():
+        return None
+    try:
+        expected = Path(sys.executable).resolve().parent / schedule.PLANNER_EXE
+        return schedule.moved_warning(schedule.query(), expected)
+    except (schedule.ScheduleError, OSError):
+        return None  # kontrola je jen pomocná, běh kvůli ní nesmí spadnout
+
+
+def cmd_install_schedule(args: argparse.Namespace) -> int:
+    try:
+        hour, minute = schedule.parse_time(args.cas)
+    except schedule.ScheduleError as exc:
+        log.error("%s", exc)
+        return EXIT_CONFIG
+    try:
+        command = schedule.planner_command(_frozen(), Path(sys.executable), paths.app_dir())
+        schedule.install(command, hour, minute)
+    except schedule.ScheduleError as exc:
+        log.error("%s", exc)
+        return EXIT_ERROR
+    log.info("Naplánováno: každý den v %d:%02d (plus náhodně až %d minut), úloha „%s“.",
+             hour, minute, schedule.RANDOM_DELAY_MINUTES, schedule.TASK_NAME)
+    log.info("Spouští se: %s %s (složka %s)", command.program, command.arguments, command.workdir)
+    log.info("Běží jen když jsi přihlášený. Když bude počítač v tu dobu vypnutý, proběhne zhruba do 10 minut "
+             "po zapnutí a přihlášení. Výsledek najdeš v logs\\jobagent.log a v e-mailu.")
+    log.info("Vyzkoušet hned: Plánovač úloh → Knihovna Plánovače úloh → %s → pravým tlačítkem Spustit, "
+             "nebo příkaz: schtasks /Run /TN \"%s\"", schedule.TASK_NAME, schedule.TASK_NAME)
+    # Úloha je hotová, ale ať se uživatel nedozví až zítra ráno, že chybí heslo.
+    try:
+        cfg = _load_config_with_password()
+        mailer.check_settings(cfg.email, cfg.secrets.email_password)
+    except mailer.MailError as exc:
+        log.warning("Úloha je nachystaná, ale souhrn zatím nepůjde odeslat: %s", exc)
+    return EXIT_OK
+
+
+def cmd_uninstall_schedule(args: argparse.Namespace) -> int:
+    try:
+        removed = schedule.uninstall()
+    except schedule.ScheduleError as exc:
+        log.error("%s", exc)
+        return EXIT_ERROR
+    if removed:
+        log.info("Denní běh zrušen (úloha „%s“ smazána z Plánovače úloh).", schedule.TASK_NAME)
+    else:
+        log.info("V Plánovači úloh žádná úloha „%s“ není, není co rušit.", schedule.TASK_NAME)
+    return EXIT_OK
+
+
 def cmd_templates(args: argparse.Namespace) -> int:
     target = paths.user_templates_dir()
     created, skipped = export_defaults(target)
@@ -337,6 +415,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             cfg, storage, _make_fetcher(cfg), dry_run=args.dry_run, unknown_samples_dir=paths.unknown_samples_dir()
         )
         now = datetime.now()
+        moved = _schedule_moved_warning()
+        if moved:
+            report.warnings.append(moved)
         templates = Templates(paths.user_templates_dir())
         # Varování k upraveným šablonám jdou do logu i do e-mailu: v e-mailu je
         # uvidí i kamarád, který log neotvírá.

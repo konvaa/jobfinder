@@ -111,6 +111,8 @@ python -m jobagent test-email --nahled :: znovu pošle poslední uloženou zprá
 python -m jobagent sablony             :: vytvoří templates\ s šablonami e-mailu k úpravě
 python -m jobagent nastav-heslo        :: heslo k e-mailu do Správce pověření Windows (ověří přihlášení)
 python -m jobagent smaz-heslo          :: smaže ho odtud
+python -m jobagent install-schedule    :: denní běh v Plánovači úloh (výchozí 7:30; jiný čas: install-schedule 18:05)
+python -m jobagent uninstall-schedule  :: zruší ho
 python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem
@@ -130,6 +132,23 @@ k otevření v prohlížeči) a `email_…eml` (přesně zpráva, která odešla
 odešla: tělo, textová verze i příloha; otevře ji Outlook i Thunderbird).
 Soubory starší než `[obecne] uchovat_vystup_dni` (výchozí 30, 0 = nemazat)
 se při dalším běhu smažou. Maže se jen `email_*`, jiné soubory ve složce zůstanou.
+
+### Denní běh (Plánovač úloh)
+
+`install-schedule` vytvoří v Plánovači úloh úlohu „Job Agent“:
+- **denně v zadaný čas** (výchozí 7:30) plus náhodně až 15 minut, aby se
+  všichni uživatelé neptali portálů ve stejnou vteřinu;
+- **jen když jsi přihlášený** – bez uloženého hesla Windows a bez práv
+  správce; díky tomu funguje i heslo ve Správci pověření;
+- **zmeškaný start** (vypnutý počítač) proběhne zhruba do 10 minut po
+  zapnutí a přihlášení;
+- běží **i na baterii**, nejvýš 2 hodiny, nikdy dvakrát najednou;
+- **bez okna**: u exe spouští `JobAgent-planovac.exe`, ze zdrojáků
+  `pythonw.exe -m jobagent run` (Python bez konzole).
+
+Opakované `install-schedule` úlohu přepíše (nový čas, nová složka). Když
+složku s programem přesuneš, ostrý běh to pozná a v e-mailu poradí spustit
+`install-schedule` znovu (jen u exe).
 
 ## Kde co je
 

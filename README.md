@@ -95,6 +95,8 @@ python -m jobagent test-email --nahled    :: resend the latest saved message fro
 python -m jobagent sablony                :: create templates/ with editable e-mail templates
 python -m jobagent nastav-heslo           :: store the e-mail password in the Windows Credential Manager (verifies login)
 python -m jobagent smaz-heslo             :: remove it from there
+python -m jobagent install-schedule       :: daily run in Windows Task Scheduler (default 7:30; other time: install-schedule 18:05)
+python -m jobagent uninstall-schedule     :: remove it
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet

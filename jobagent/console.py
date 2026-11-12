@@ -10,10 +10,17 @@ Jak se to pozná: GetConsoleProcessList vrací procesy připojené ke konzoli.
 Jen jeden = okno vzniklo pro nás (dvojklik, zástupce). Z cmd jsou dva (cmd
 a my). Funguje jen u onedir buildu: onefile má dva procesy (rozbalovač
 a program), proto by vracel 2 i po dvojkliku. Mimo Windows vždy False.
+
+Režim na pozadí: JobAgent-planovac.exe (a pythonw.exe ze zdrojáků) nemá
+konzoli vůbec, sys.stdout i sys.stderr jsou None. print() pak nic nedělá,
+ale cokoli, co volá .write() přímo (argparse při chybě, traceback), by
+spadlo – proto se na začátku přesměrují do os.devnull. Všechno důležité
+jde do logs/jobagent.log.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -59,3 +66,29 @@ def open_for_edit(path: Path) -> bool:
     except OSError:
         return False
     return True
+
+
+def in_background() -> bool:
+    """Běží program bez konzole (Plánovač, dvojklik na JobAgent-planovac.exe, pythonw)?"""
+    return sys.stdout is None or sys.stderr is None
+
+
+def silence_missing_streams() -> None:
+    """Chybějící stdout/stderr nahradit os.devnull, aby zápis do nich nespadl."""
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115 – žije do konce procesu
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+
+
+def message_box(text: str, title: str = "Job Agent") -> None:
+    """Okno se zprávou (jediný způsob, jak něco říct programu bez konzole)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        MB_ICONINFORMATION = 0x40
+        ctypes.windll.user32.MessageBoxW(None, text, title, MB_ICONINFORMATION)
+    except (AttributeError, OSError):
+        pass

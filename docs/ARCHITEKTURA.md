@@ -182,6 +182,18 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   heslo na obou místech, program varuje. Funguje díky úloze Plánovače „jen
   při přihlášení“ (bez přihlášení by DPAPI nemělo klíče uživatele).
   Nechrání před škodlivým programem pod stejným účtem – to je v README.
+- **Plánovač úloh** (`schedule.py`): XML úlohy přes `schtasks /Create /XML`,
+  protože StartWhenAvailable a běh na baterii z příkazové řádky schtasks
+  nastavit nejdou. InteractiveToken (jen při přihlášení, bez hesla, bez
+  správce), denně + RandomDelay 15 min, IgnoreNew, limit 2 h (první běh
+  stahuje hodně detailů). Spouští exe bez okna (`JobAgent-planovac.exe`; ze
+  zdrojáků `pythonw.exe`), takže nic neproblikne. Výstup schtasks se nečte
+  (lokalizovaný), jen návratový kód; úloha se čte zpět jako XML. U exe běh
+  kontroluje, jestli úloha ukazuje na jeho složku (přesun → varování).
+- **Běh na pozadí** (`console.py`): bez konzole jsou `sys.stdout/stderr`
+  None; nahradí se `os.devnull`, aby nespadl zápis (argparse, traceback).
+  Planovací exe spuštěné dvojklikem ukáže okno se zprávou, ať uživatel
+  otevře `JobAgent.exe`.
 
 ## 12. Testy a ukázky
 
