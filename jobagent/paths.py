@@ -48,7 +48,7 @@ def user_templates_dir() -> Path:
 def bundled_dir() -> Path:
     """Soubory přibalené k programu, které uživatel neupravuje (vzor configu).
 
-    U exe je to _internal\ (sys._MEIPASS), ze zdrojáků kořen projektu. Na rozdíl
+    U exe je to _internal\\ (sys._MEIPASS), ze zdrojáků kořen projektu. Na rozdíl
     od app_dir() tady nic nepřežije aktualizaci – a nemá: vzor má vždy odpovídat
     verzi programu.
     """

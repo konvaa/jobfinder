@@ -137,8 +137,9 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   překládají na radu (heslo pro aplikace, port × zabezpečení, antivir
   kontrolující poštu). Neodeslaný souhrn se uloží do `vystup/` jako
   `…_NEODESLANO.html` a `.eml`, návratový kód 3.
-- **Heslo:** jen v `secrets.toml`, nikdy se nevypisuje (ani délka). Doporučené
-  je heslo pro aplikace a samostatná odesílací schránka.
+- **Heslo:** přednostně ve Správci pověření Windows (viz kapitola 11), jinak
+  v `secrets.toml`; nikdy se nevypisuje (ani délka). Doporučené je heslo pro
+  aplikace a samostatná odesílací schránka.
 - **Kopie ve `vystup/` (`outputs.py`):** každý běh uloží `email_….html` (celý
   souhrn pro prohlížeč) a `email_….eml` (celá zpráva: tělo, text, příloha).
   Zpráva se sestaví i u `--dry-run`, jen se neodešle. Proč `.eml`: tělo se liší
@@ -171,6 +172,16 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   verzí: chybějící (šablona ze starší verze) a neznámé (překlep) hlásí v logu
   i v e-mailu. Žádné otisky ani automatické nahrazování: jednoduché pravidlo
   „co je v templates/, je tvoje“.
+- **Heslo ve Správci pověření** (`credentials.py`): CredWriteW / CredReadW /
+  CredDeleteW přes ctypes, obecné pověření `JobAgent/<uzivatel>@<server>`,
+  jen pro tento počítač. `nastav-heslo` heslo ukládá jen po úspěšném
+  zkušebním přihlášení (výpadek sítě: zeptá se, výchozí ne) a nabídne ho
+  vymazat ze `secrets.toml` – bez zálohy, protože ta by heslo jen přesunula
+  do dalšího souboru v čistém textu (`secrets_file.py` mění jediný řádek,
+  výsledek ověří přes tomllib). Při běhu má Správce pověření přednost; je-li
+  heslo na obou místech, program varuje. Funguje díky úloze Plánovače „jen
+  při přihlášení“ (bez přihlášení by DPAPI nemělo klíče uživatele).
+  Nechrání před škodlivým programem pod stejným účtem – to je v README.
 
 ## 12. Testy a ukázky
 
@@ -187,10 +198,8 @@ originály.
   Opakované hodnocení vyřazených nesmí znovu platit za AI ani stahovat detail.
   Při chybě (klíč, kredit, síť) program pokračuje s bodováním podle slov
   a v e-mailu to uvede.
-- **Exe a Plánovač úloh (fáze 6):** PyInstaller, `install-schedule` se
-  spuštěním po zmeškaném startu, návod krok za krokem. Kandidát: heslo
-  ve Správci pověření Windows (`CredReadW` přes `ctypes`, bez další
-  knihovny) místo čistého textu v `secrets.toml`.
+- **Exe a Plánovač úloh (fáze 6, rozpracováno):** PyInstaller (onedir, dvě
+  exe), `install-schedule` se spuštěním po zmeškaném startu, návod krok za krokem.
 - **Filtr vzdálenosti:** přibalený seznam obcí a okresů se souřadnicemi
   (offline). Domov + `max_km`, vzdušná čára. U okresu je vzdálenost rozpětí
   (těžiště ± poloměr): jistě v okruhu, jistě mimo (vyřadit), nejisté (ponechat

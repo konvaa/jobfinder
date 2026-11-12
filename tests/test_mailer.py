@@ -34,7 +34,7 @@ NOW = datetime(2026, 11, 4, 10, 0)
 
 
 def cfg(**changes) -> EmailCfg:
-    values = dict(smtp_server="smtp.example.cz", port=465, security="ssl", user="agent@example.com",
+    values = dict(smtp_server="smtp.example.com", port=465, security="ssl", user="agent@example.com",
                   sender="agent@example.com", recipients=["ja@example.com", "kamarad@example.com"])
     values.update(changes)
     return EmailCfg(**values)
@@ -246,7 +246,7 @@ class ExplainTests(unittest.TestCase):
     def test_unknown_host(self):
         error = self.explain(socket.gaierror(11001, "getaddrinfo failed"))
         self.assertTrue(error.transient)
-        self.assertIn("smtp.example.cz", str(error))
+        self.assertIn("smtp.example.com", str(error))
 
     def test_4xx_is_transient_5xx_is_not(self):
         self.assertTrue(self.explain(smtplib.SMTPDataError(451, b"try later")).transient)
@@ -482,7 +482,7 @@ class TestEmailCommandTests(unittest.TestCase):
         self.assertEqual(send.call_args.kwargs["retries"], 0)
         self.assertIn("zkušební", send.call_args.args[0]["Subject"])
         self.assertFalse(any("tajne-heslo" in line for line in logs))
-        self.assertTrue(any("heslo: vyplněné" in line for line in logs))
+        self.assertTrue(any("heslo: uložené (vyplněné)" in line for line in logs))
 
     def test_failure_returns_3(self):
         code, _, _ = self.run_cmd(side_effect=mailer.MailError("nejde", transient=False, technical="T"))

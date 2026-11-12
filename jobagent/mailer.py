@@ -73,8 +73,9 @@ def check_settings(cfg: EmailCfg, password: str) -> None:
         raise MailError("V config.toml v sekci [email] chybí prijemci = [\"adresa@…\"].", transient=False)
     if not password:
         raise MailError(
-            "V secrets.toml chybí heslo ([email] heslo = \"…\"). U Seznamu se zapnutým dvoufázovým "
-            "ověřením a u Gmailu sem patří heslo pro aplikace, ne heslo k účtu.",
+            "Chybí heslo k e-mailu. Ve Windows ho ulož příkazem nastav-heslo (uloží se do Správce "
+            "pověření), jinde do secrets.toml ([email] heslo = \"…\"). U Seznamu se zapnutým "
+            "dvoufázovým ověřením a u Gmailu je to heslo pro aplikace, ne heslo k účtu.",
             transient=False,
         )
 
@@ -106,8 +107,8 @@ def send(msg: EmailMessage, cfg: EmailCfg, password: str, *, retries: int = 1,
             raise error from exc
 
 
-def _send_once(msg: EmailMessage, cfg: EmailCfg, password: str, note: Callable[[str], None],
-               smtp_ssl: type, smtp_plain: type) -> None:
+def _login(cfg: EmailCfg, password: str, note: Callable[[str], None], smtp_ssl: type, smtp_plain: type):
+    """Připojit a přihlásit. Vrací otevřené spojení; volající ho musí zavřít (_quit)."""
     context = ssl.create_default_context()
     mode = "SSL" if cfg.security == "ssl" else "STARTTLS"
     note(f"Připojuji se k {cfg.smtp_server}:{cfg.port} ({mode})…")
@@ -121,17 +122,43 @@ def _send_once(msg: EmailMessage, cfg: EmailCfg, password: str, note: Callable[[
             server.starttls(context=context)
             server.ehlo()
         server.login(cfg.user, password)
-        note(f"Přihlášení jako {cfg.user}: OK.")
+    except BaseException:
+        _quit(server)
+        raise
+    note(f"Přihlášení jako {cfg.user}: OK.")
+    return server
+
+
+def _quit(server) -> None:
+    try:
+        server.quit()
+    except Exception:  # noqa: BLE001 – zpráva už odešla nebo spojení padlo; quit je jen zdvořilost
+        pass
+
+
+def _send_once(msg: EmailMessage, cfg: EmailCfg, password: str, note: Callable[[str], None],
+               smtp_ssl: type, smtp_plain: type) -> None:
+    server = _login(cfg, password, note, smtp_ssl, smtp_plain)
+    try:
         refused = server.send_message(msg)
         if refused:
             # Část příjemců server odmítl, ostatním zpráva odešla. Neopakovat (byla by duplicita).
             note("Některým příjemcům server zprávu nepřijal: " + ", ".join(refused))
         note(f"Odesláno na: {msg['To']}.")
     finally:
-        try:
-            server.quit()
-        except Exception:  # noqa: BLE001 – zpráva už odešla nebo spojení padlo; quit je jen zdvořilost
-            pass
+        _quit(server)
+
+
+def verify_login(cfg: EmailCfg, password: str, *, progress: Callable[[str], None] | None = None,
+                 smtp_ssl: type = smtplib.SMTP_SSL, smtp_plain: type = smtplib.SMTP) -> None:
+    """Jen se přihlásit a odhlásit, nic neodeslat (pro nastav-heslo). Vyhodí MailError."""
+    note = progress or (lambda text: log.info("%s", text))
+    try:
+        _quit(_login(cfg, password, note, smtp_ssl, smtp_plain))
+    except MailError:
+        raise
+    except Exception as exc:  # noqa: BLE001 – stejný překlad chyb jako u odesílání
+        raise explain(exc, cfg) from exc
 
 
 def explain(exc: BaseException, cfg: EmailCfg) -> MailError:
@@ -147,8 +174,8 @@ def explain(exc: BaseException, cfg: EmailCfg) -> MailError:
     if isinstance(exc, smtplib.SMTPAuthenticationError):
         return err(
             f"Server odmítl přihlášení (uživatel {cfg.user}). Zkontroluj: uzivatel je CELÁ e-mailová adresa; "
-            "heslo v secrets.toml je správné. Máš-li dvoufázové ověření (Seznam), nebo jde-li o Gmail, "
-            "patří tam heslo pro aplikace, ne heslo k účtu.", False)
+            "heslo je správné (znovu ho ulož příkazem nastav-heslo, nebo oprav v secrets.toml). Máš-li "
+            "dvoufázové ověření (Seznam), nebo jde-li o Gmail, je to heslo pro aplikace, ne heslo k účtu.", False)
     if isinstance(exc, smtplib.SMTPSenderRefused):
         return err(
             f"Server odmítl odesílatele {exc.sender!r} (kód {exc.smtp_code}). Nastav odesilatel stejně jako "

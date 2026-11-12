@@ -69,7 +69,7 @@ python -m pip install -r requirements.txt
 
 :: 4) Nastavení – jednou
 copy config.example.toml config.toml
-copy secrets.example.toml secrets.toml
+python -m jobagent nastav-heslo
 ```
 
 Proč `.venv`: knihovny se instalují jen pro tento projekt, ne do celého
@@ -84,14 +84,22 @@ Po aktivaci stačí `python` (ukazuje do `.venv`). Bez aktivace funguje
 ## Nastavení
 
 `config.toml` uprav v Poznámkovém bloku. Je hustě okomentovaný: hledání,
-filtry, slova a body, souhrn e-mailem a volitelné AI. Hesla a API klíč patří
-jen do `secrets.toml`. Ani jeden soubor není v gitu.
+filtry, slova a body, souhrn e-mailem a volitelné AI. Hesla do něj nepatří.
+Config není v gitu.
 
-E-mail: v `[email]` vyplň server, `uzivatel` (celá adresa) a `prijemci`, do
-`secrets.toml` heslo. U Seznamu se zapnutým dvoufázovým ověřením a u Gmailu
-patří do `secrets.toml` **heslo pro aplikace**, ne heslo k účtu. Doporučení:
-na odesílání si založ samostatnou schránku, ať heslo v souboru neotevírá tvou
-hlavní poštu. Nastavení ověříš příkazem `test-email`.
+E-mail: v `[email]` vyplň server, `uzivatel` (celá adresa) a `prijemci`. Heslo
+ulož příkazem `nastav-heslo`: program se nejdřív zkusí přihlásit (nic neodešle)
+a heslo uloží zašifrované do **Správce pověření Windows** (Ovládací panely →
+Správce přihlašovacích údajů → Přihlašovací údaje systému Windows → položka
+`JobAgent/…`). Smazání: `smaz-heslo`. Mimo Windows patří heslo do `secrets.toml`
+(vzor `secrets.example.toml`, není v gitu). U Seznamu se zapnutým dvoufázovým
+ověřením a u Gmailu je to **heslo pro aplikace**, ne heslo k účtu. Doporučení:
+na odesílání si založ samostatnou schránku, ať případně uniklé heslo neotevře
+tvou hlavní poštu. Nastavení ověříš příkazem `test-email`.
+
+Co Správce pověření chrání: heslo neleží v souboru, který se dá omylem poslat
+dál nebo zálohovat. Před škodlivým programem spuštěným pod tvým účtem ale
+nechrání, ten si heslo přečte stejně jako Job Agent.
 
 ## Příkazy
 
@@ -101,6 +109,8 @@ python -m jobagent run --dry-run       :: běh bez odeslání, náhled e-mailu s
 python -m jobagent test-email          :: krátký zkušební e-mail (ověří server, heslo, příjemce)
 python -m jobagent test-email --nahled :: znovu pošle poslední uloženou zprávu z vystup\ (předmět „TEST – …“)
 python -m jobagent sablony             :: vytvoří templates\ s šablonami e-mailu k úpravě
+python -m jobagent nastav-heslo        :: heslo k e-mailu do Správce pověření Windows (ověří přihlášení)
+python -m jobagent smaz-heslo          :: smaže ho odtud
 python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem

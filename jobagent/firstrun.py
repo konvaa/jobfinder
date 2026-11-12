@@ -4,9 +4,9 @@ Proč ze vzoru přibaleného k programu (paths.example_config), ne z
 config.example.toml vedle exe: ten mohl kamarád smazat nebo upravit, přibalený
 vždy odpovídá verzi programu.
 
-secrets.toml se nevytváří. Heslo k e-mailu se ukládá příkazem do Správce
-pověření Windows (fáze 6b), takže soubor s heslem v čistém textu vůbec
-nemusí vzniknout.
+secrets.toml se nevytváří. Heslo k e-mailu se ukládá příkazem nastav-heslo
+do Správce pověření Windows (credentials.py), takže soubor s heslem v čistém
+textu vůbec nemusí vzniknout.
 
 Existující config.toml se nikdy nepřepíše. Po vytvoření program skončí
 kódem 2 (chyba v nastavení): s ukázkovým configem nemá smysl nic odesílat.
@@ -42,8 +42,9 @@ s ukázkovým nastavením. Otevři ho (třeba v Poznámkovém bloku) a vyplň:
      prace.cz nebo jobscontact.cz, nastav místo a obor a zkopíruj adresu
      z adresního řádku prohlížeče. Ukázková hledání smaž nebo uprav.
   2. E-MAIL – v části [email] svou adresu (uzivatel) a komu posílat (prijemci).
-  3. HESLO k e-mailu – do souboru secrets.toml podle secrets.example.toml.
-     U Seznamu s dvoufázovým ověřením a u Gmailu je to „heslo pro aplikace“.
+Soubor ulož a v příkazovém řádku spusť:
+    {cmd} nastav-heslo        (heslo k e-mailu, uloží se bezpečně ve Windows)
+U Seznamu s dvoufázovým ověřením a u Gmailu je to „heslo pro aplikace“.
 
 Pak vyzkoušej:
     {cmd} test-email          (přijde zkušební e-mail)

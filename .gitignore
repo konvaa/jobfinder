@@ -4,6 +4,8 @@ config.toml
 config.toml.*
 secrets.toml
 secrets*.toml
+# I ruční zálohy typu secrets.toml.zaloha (vzor výše je nezachytí: nekončí .toml).
+secrets.toml.*
 *.env
 .env*
 *.key

@@ -241,7 +241,7 @@ max_vyrazenych = 30
 
 
 # ---------------------------------------------------------------------
-#  E-MAIL – kam a přes co se souhrn posílá (heslo patří do secrets.toml)
+#  E-MAIL – kam a přes co se souhrn posílá (heslo: příkaz nastav-heslo)
 # ---------------------------------------------------------------------
 # Souhrn přijde po každém ostrém běhu, i když není nic nového („dnes nic
 # nového“ se stavovým řádkem), abys viděl, že program běžel.
@@ -250,7 +250,9 @@ max_vyrazenych = 30
 # Seznam (seznam.cz, email.cz, post.cz): smtp.seznam.cz, port 465, "ssl".
 # Uživatel je CELÁ e-mailová adresa. Když 465 nejde (blokuje ho síť nebo
 # antivir), zkus port 587 a zabezpeceni = "starttls".
-# Máš-li na Seznamu zapnuté dvoufázové ověření, patří do secrets.toml
+# Heslo sem nepiš. Ve Windows ho ulož příkazem  jobagent nastav-heslo
+# (uloží se zašifrované do Správce pověření Windows, ověří přihlášení);
+# jinde do secrets.toml. Máš-li na Seznamu zapnuté dvoufázové ověření, je to
 # HESLO PRO APLIKACE (Účet Seznam → Zabezpečení účtu → Dvoufázové ověření
 # → Heslo pro aplikace), ne heslo k účtu.
 #

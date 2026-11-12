@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import email
+import getpass
 import logging
 import re
 import sys
@@ -27,7 +28,10 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from jobagent import __version__, collectors, console, emailer, explain, firstrun, mailer, outputs, paths, pipeline
+from jobagent import (
+    __version__, collectors, console, credentials, emailer, explain, firstrun, mailer, outputs, paths, pipeline,
+    secrets_file,
+)
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
 from jobagent.log import setup_logging
@@ -54,6 +58,14 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--nahled", action="store_true",
                       help="místo krátké zprávy znovu poslat poslední uloženou zprávu z vystup/ (předmět „TEST – …“)")
 
+    password = sub.add_parser(
+        "nastav-heslo",
+        help="uložit heslo k e-mailu do Správce pověření Windows (ověří přihlášení, nic neodešle)",
+    )
+    password.add_argument("--bez-overeni", action="store_true",
+                          help="uložit bez zkušebního přihlášení (např. bez internetu)")
+    sub.add_parser("smaz-heslo", help="smazat heslo k e-mailu ze Správce pověření Windows")
+
     sub.add_parser(
         "sablony",
         help="vytvořit složku templates/ s šablonami e-mailu k úpravě (existující soubory nepřepíše)",
@@ -79,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 # Příkazy, které bez config.toml nemají smysl: u nich první spuštění vytvoří config.
-NEEDS_CONFIG = {"run", "test-email"}
+NEEDS_CONFIG = {"run", "test-email", "nastav-heslo", "smaz-heslo"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -109,6 +121,10 @@ def _main(argv: list[str]) -> int:
             return cmd_run(args)
         if args.command == "test-email":
             return cmd_test_email(args)
+        if args.command == "nastav-heslo":
+            return cmd_set_password(args)
+        if args.command == "smaz-heslo":
+            return cmd_delete_password(args)
         if args.command == "sablony":
             return cmd_templates(args)
         if args.command == "sample":
@@ -139,6 +155,7 @@ Příkazy (příkazový řádek v této složce otevřeš tak, že do adresního
 Průzkumníka napíšeš  cmd  a stiskneš Enter):
   {cmd} run --dry-run    ukázat, co by přišlo e-mailem (nic neodešle)
   {cmd} run              stáhnout nabídky a poslat souhrn
+  {cmd} nastav-heslo     uložit heslo k e-mailu (bezpečně, do Správce pověření)
   {cmd} test-email       poslat zkušební e-mail
   {cmd} sablony          vytvořit složku templates s šablonami e-mailu k úpravě
   {cmd} --help           všechny příkazy
@@ -158,6 +175,122 @@ def _first_run_if_needed() -> int | None:
     if console.can_ask() and console.open_for_edit(config_path):
         print("Soubor config.toml jsem otevřel v Poznámkovém bloku. Po úpravě ho ulož (Ctrl+S).")
     return EXIT_CONFIG
+
+
+def _load_config_with_password():
+    """config + secrets.toml, heslo k e-mailu přednostně ze Správce pověření Windows."""
+    cfg = load_config(paths.config_file(), paths.secrets_file())
+    e = cfg.email
+    try:
+        stored = credentials.stored_password(credentials.default_store(), e.user, e.smtp_server)
+    except credentials.CredentialError as exc:
+        cfg.warnings.append(f"{exc} Použiju heslo ze secrets.toml, pokud tam je.")
+        return cfg
+    if stored is None:
+        return cfg
+    if cfg.secrets.email_password:
+        cfg.warnings.append(
+            "Heslo k e-mailu je ve Správci pověření i v secrets.toml. Používám Správce pověření; ze "
+            f"secrets.toml ho odstraň (znovu spusť {_cmd()} nastav-heslo, nabídne to, nebo vyprázdni řádek heslo)."
+        )
+    cfg.secrets.email_password = stored
+    cfg.secrets.email_password_source = "Správce pověření Windows"
+    return cfg
+
+
+def _ask_yes(question: str, default: bool) -> bool:
+    hint = "[A/n]" if default else "[a/N]"
+    try:
+        answer = input(f"{question} {hint} ").strip().lower()
+    except EOFError:
+        return default
+    if not answer:
+        return default
+    return answer[0] in ("a", "y")  # ano / yes
+
+
+def _password_cfg():
+    """Společná příprava pro nastav-heslo / smaz-heslo. Vrací (cfg, store) nebo kód chyby."""
+    if not credentials.available():
+        log.error("Správce pověření je jen ve Windows. Tady dej heslo do secrets.toml ([email] heslo = \"…\").")
+        return EXIT_CONFIG
+    cfg = load_config(paths.config_file(), paths.secrets_file())
+    if not cfg.email.user or not cfg.email.smtp_server:
+        log.error("V config.toml v sekci [email] nejdřív vyplň uzivatel (celou adresu) a smtp_server. "
+                  "Heslo se ukládá k téhle adrese a serveru.")
+        return EXIT_CONFIG
+    return cfg, credentials.default_store()
+
+
+def cmd_set_password(args: argparse.Namespace) -> int:
+    prepared = _password_cfg()
+    if isinstance(prepared, int):
+        return prepared
+    cfg, store = prepared
+    e = cfg.email
+    if not console.can_ask():
+        log.error("nastav-heslo potřebuje okno, kde jde heslo napsat. Spusť z příkazového řádku: %s nastav-heslo", _cmd())
+        return EXIT_ERROR
+
+    print(f"\nHeslo k e-mailu {e.user} (server {e.smtp_server}).")
+    print("U Seznamu se zapnutým dvoufázovým ověřením a u Gmailu zadej HESLO PRO APLIKACE, ne heslo k účtu.")
+    print("Heslo se při psaní ani vložení (Ctrl+V nebo pravé tlačítko myši) nezobrazuje – to je v pořádku.")
+    # strip: při vložení se často přibalí konec řádku. Mezery uvnitř zůstávají (Gmail je ukazuje po čtveřicích).
+    password = getpass.getpass("Heslo: ").strip()
+    if not password:
+        log.warning("Nic nezadáno, nic se neuložilo.")
+        return EXIT_ERROR
+
+    if not args.bez_overeni:
+        try:
+            mailer.verify_login(e, password)
+        except mailer.MailError as exc:
+            log.error("Přihlášení se nepovedlo: %s", exc)
+            if exc.technical:
+                log.error("Technicky: %s", exc.technical)
+            # Špatné heslo neukládat. Výpadek sítě ale o heslu nic neříká – nechat na uživateli.
+            if not (exc.transient and _ask_yes("Server teď není dostupný. Uložit heslo i bez ověření?", default=False)):
+                log.error("Heslo jsem neuložil.")
+                return EXIT_MAIL
+
+    target = credentials.target_name(e.user, e.smtp_server)
+    try:
+        store.write(target, e.user, password)
+    except credentials.CredentialError as exc:
+        log.error("%s", exc)
+        return EXIT_ERROR
+    log.info("Heslo uloženo do Správce pověření Windows jako „%s“ (jen pro tento počítač a tvůj účet Windows).", target)
+
+    secrets_path = paths.secrets_file()
+    if secrets_file.has_email_password(secrets_path):
+        if _ask_yes("Soubor secrets.toml pořád obsahuje heslo v čistém textu. Odstranit ho odtud?", default=True):
+            if secrets_file.clear_email_password(secrets_path):
+                log.info("Heslo ze secrets.toml odstraněno (zbytek souboru beze změny).")
+            else:
+                log.warning("Heslo ze secrets.toml se nepodařilo bezpečně odstranit. Smaž ho ručně: "
+                            "v sekci [email] nech řádek heslo = \"\".")
+        else:
+            log.warning("secrets.toml heslo dál obsahuje; program použije to ze Správce pověření.")
+    log.info("Hotovo. Vyzkoušej: %s test-email", _cmd())
+    return EXIT_OK
+
+
+def cmd_delete_password(args: argparse.Namespace) -> int:
+    prepared = _password_cfg()
+    if isinstance(prepared, int):
+        return prepared
+    cfg, store = prepared
+    target = credentials.target_name(cfg.email.user, cfg.email.smtp_server)
+    try:
+        deleted = store.delete(target)
+    except credentials.CredentialError as exc:
+        log.error("%s", exc)
+        return EXIT_ERROR
+    if deleted:
+        log.info("Heslo „%s“ smazáno ze Správce pověření. Bez hesla se souhrn neodešle.", target)
+    else:
+        log.info("Ve Správci pověření žádné heslo „%s“ není.", target)
+    return EXIT_OK
 
 
 def cmd_templates(args: argparse.Namespace) -> int:
@@ -182,7 +315,7 @@ EXIT_OK, EXIT_ERROR, EXIT_CONFIG, EXIT_MAIL = 0, 1, 2, 3
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    cfg = load_config(paths.config_file(), paths.secrets_file())
+    cfg = _load_config_with_password()
     for warning in cfg.warnings:
         log.warning("%s", warning)
     if not args.dry_run:
@@ -269,14 +402,16 @@ def _deliver(cfg, storage: Storage, report: pipeline.RunReport, now: datetime,
 
 
 def cmd_test_email(args: argparse.Namespace) -> int:
-    cfg = load_config(paths.config_file(), paths.secrets_file())
+    cfg = _load_config_with_password()
     for warning in cfg.warnings:
         log.warning("%s", warning)
     e = cfg.email
     # Heslo se nikdy nevypisuje, ani jeho délka: stačí vědět, jestli je vyplněné.
     log.info("Server: %s:%s (%s), uživatel: %s, odesílatel: %s, příjemci: %s, heslo: %s",
              e.smtp_server, e.port, e.security, e.user or "—", e.sender or e.user or "—",
-             ", ".join(e.recipients) or "—", "vyplněné" if cfg.secrets.email_password else "CHYBÍ")
+             ", ".join(e.recipients) or "—",
+             (f"uložené ({cfg.secrets.email_password_source or 'vyplněné'})"
+              if cfg.secrets.email_password else "CHYBÍ"))
     now = datetime.now()
 
     if args.nahled:

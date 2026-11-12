@@ -65,19 +65,25 @@ py -3.12 -m venv .venv
 python -m pip install -r requirements.txt
 
 copy config.example.toml config.toml
-copy secrets.example.toml secrets.toml
+python -m jobagent nastav-heslo
 ```
 
 Then edit `config.toml` in any text editor. It is heavily commented (in Czech):
 your searches, filters, keywords and points, the e-mail summary and the
-optional AI. Passwords and the API key belong only to `secrets.toml`. Neither
-file is tracked by git.
+optional AI. Passwords do not belong there. The config is not tracked by git.
 
 E-mail: fill in the server, `uzivatel` (the full address) and `prijemci` in
-`[email]`, and the password in `secrets.toml`. Seznam with two-factor
-authentication and Gmail need an **app password** there, not the account
-password. A dedicated sender mailbox is a good idea, so the password in the file
-does not open your main inbox. Check the settings with `test-email`.
+`[email]`. Store the password with `nastav-heslo`: the program first tries to log
+in (nothing is sent) and then saves the password encrypted in the **Windows
+Credential Manager** (entry `JobAgent/…`; remove it with `smaz-heslo`). Outside
+Windows the password goes to `secrets.toml` (see `secrets.example.toml`, not
+tracked by git). Seznam with two-factor authentication and Gmail need an **app
+password**, not the account password. A dedicated sender mailbox is a good idea.
+Check the settings with `test-email`.
+
+The Credential Manager keeps the password out of files that could be shared or
+backed up by mistake. It does not protect against malware running under your
+own account.
 
 ## Usage
 
@@ -87,6 +93,8 @@ python -m jobagent run --dry-run          :: full run without sending; opens the
 python -m jobagent test-email             :: send a short test e-mail (server, password, recipients)
 python -m jobagent test-email --nahled    :: resend the latest saved message from vystup/ (subject "TEST – …")
 python -m jobagent sablony                :: create templates/ with editable e-mail templates
+python -m jobagent nastav-heslo           :: store the e-mail password in the Windows Credential Manager (verifies login)
+python -m jobagent smaz-heslo             :: remove it from there
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet

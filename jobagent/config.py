@@ -111,6 +111,8 @@ class AiCfg:
 class Secrets:
     email_password: str = ""
     api_key: str = ""
+    # Odkud heslo je („Správce pověření“ / „secrets.toml“) – jen pro výpis, nikdy heslo samo.
+    email_password_source: str = ""
 
 
 @dataclass
@@ -466,6 +468,8 @@ def load_secrets(path: Path, errors: list[str], warnings: list[str]) -> Secrets:
         email_password=e.get("heslo", str, ""),
         api_key=a.get("api_klic", str, ""),
     )
+    if secrets.email_password:
+        secrets.email_password_source = "secrets.toml"
     e.finish()
     a.finish()
     root.finish()
