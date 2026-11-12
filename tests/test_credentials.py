@@ -230,6 +230,13 @@ class SecretsFileTests(unittest.TestCase):
         self.assertFalse(secrets_file.clear_email_password(self.path))
         self.assertFalse(secrets_file.clear_email_password(self.path.with_name("neni.toml")))
 
+    def test_cp1250_file_left_alone(self):
+        text = '# poznámka\n[email]\nheslo = "žluťoučký"\n'
+        self.path.write_bytes(text.encode("cp1250"))
+        self.assertFalse(secrets_file.has_email_password(self.path))
+        self.assertFalse(secrets_file.clear_email_password(self.path))
+        self.assertEqual(self.path.read_bytes(), text.encode("cp1250"))
+
     def test_multiline_string_left_alone(self):
         text = '[email]\nheslo = """x\ny"""\n'
         self.path.write_text(text, encoding="utf-8")

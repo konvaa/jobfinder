@@ -61,8 +61,15 @@ class Templates:
 
     def raw(self, name: str) -> str:
         path = self.source(name)
+        if path != self.default_dir / name:
+            try:
+                return path.read_text(encoding="utf-8-sig")  # -sig: Poznámkový blok umí uložit s BOM
+            except (OSError, UnicodeDecodeError):
+                # Upravená šablona uložená v „ANSI“ (cp1250) nebo nečitelná: použít
+                # výchozí, aby běh nespadl. Varování s radou přidá check().
+                path = self.default_dir / name
         try:
-            return path.read_text(encoding="utf-8-sig")  # -sig: Poznámkový blok umí uložit s BOM
+            return path.read_text(encoding="utf-8")
         except FileNotFoundError:
             raise TemplateError(f"Chybí šablona {path}. Program je nejspíš poškozený, rozbal ho znovu.") from None
 
@@ -80,8 +87,12 @@ class Templates:
                 continue
             try:
                 mine = placeholders(name, custom.read_text(encoding="utf-8-sig"))
-            except (OSError, UnicodeDecodeError) as exc:
-                warnings.append(f"Šablonu {custom} nejde přečíst ({exc}); oprav ji nebo smaž, pak se použije výchozí.")
+            except UnicodeDecodeError:
+                warnings.append(f"Šablona {custom} není uložená v UTF-8, používám výchozí. V Poznámkovém bloku "
+                                "dej Uložit jako → Kódování: UTF-8.")
+                continue
+            except OSError as exc:
+                warnings.append(f"Šablonu {custom} nejde přečíst ({exc}), používám výchozí.")
                 continue
             default = placeholders(name, (self.default_dir / name).read_text(encoding="utf-8"))
             missing, unknown = sorted(default - mine), sorted(mine - default)

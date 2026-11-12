@@ -166,11 +166,15 @@ class TemplatesTests(unittest.TestCase):
         self.assertEqual(templates.check(), [])
         self.assertFalse(templates.raw("nabidka.html").startswith("\ufeff"))
 
-    def test_unreadable_file_warns(self):
+    def test_cp1250_template_falls_back_to_default(self):
+        # Kamarád uloží šablonu v Poznámkovém bloku jako „ANSI“ (cp1250).
         self.custom.mkdir()
-        (self.custom / "vyrazeno.html").write_bytes(b"\xff\xfe\x00neplatne")
-        warnings = Templates(self.custom).check()
-        self.assertTrue(any("nejde přečíst" in w for w in warnings))
+        (self.custom / "vyrazeno.html").write_bytes("<p>Vyřazeno: $pozice</p>".encode("cp1250"))
+        templates = Templates(self.custom)
+        warnings = templates.check()
+        self.assertTrue(any("není uložená v UTF-8" in w for w in warnings))
+        # Vykreslení nesmí spadnout: použije se výchozí šablona.
+        self.assertEqual(templates.raw("vyrazeno.html"), (DEFAULT_DIR / "vyrazeno.html").read_text(encoding="utf-8"))
 
 
 class TemplatesCommandTests(TempApp):

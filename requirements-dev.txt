@@ -1,15 +1,18 @@
-# Vývojové závislosti – jen pro build exe (tools\build.py), ne pro běh programu.
-# Program sám potřebuje jen requirements.txt; tenhle soubor ho načte a přidá
-# PyInstaller. Proč zvlášť: kdo spouští ze zdrojáků, PyInstaller nepotřebuje,
-# a do exe se nic z tohoto souboru nedostane (PyInstaller balí jen to, co
+# Vyvojove zavislosti - jen pro build exe (tools\build.py), ne pro beh programu.
+# Program sam potrebuje jen requirements.txt; tenhle soubor ho nacte a prida
+# PyInstaller. Proc zvlast: kdo spousti ze zdrojaku, PyInstaller nepotrebuje,
+# a do exe se nic z tohoto souboru nedostane (PyInstaller bali jen to, co
 # program importuje).
 #
-# Všechno v přesných verzích včetně závislostí PyInstalleru, aby build za půl
-# roku dal stejný výsledek. Řádky se „; sys_platform == …“ se instalují jen
-# ve Windows (zkušební build na Linuxu je přeskočí).
+# Vsechno v presnych verzich vcetne zavislosti PyInstalleru, aby build za pul
+# roku dal stejny vysledek. Radky se "; sys_platform == ..." se instaluji jen
+# ve Windows (zkusebni build na Linuxu je preskoci).
 #
-# Aktualizace: v prázdném venv  pip install pyinstaller pyinstaller-hooks-contrib,
-# sem přepiš verze z  pip freeze  a ověř build (tools\build.py) + Sandbox.
+# Jen ASCII, bez diakritiky: pip cte soubor kodovanim systemu (na ceskych
+# Windows cp1250), UTF-8 diakritika ho shodi. Hlida tests/test_source_hygiene.py.
+#
+# Aktualizace: v prazdnem venv  pip install pyinstaller pyinstaller-hooks-contrib,
+# sem prepis verze z  pip freeze  a over build (tools\build.py) + Sandbox.
 -r requirements.txt
 
 pyinstaller==6.22.3

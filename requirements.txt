@@ -1,8 +1,11 @@
-# Závislosti Job Agenta – přesné verze kvůli opakovatelnému buildu exe.
-# Přímá závislost je jen beautifulsoup4, zbylé dvě jsou její závislosti.
-# Připnuté jsou i ty, aby build za půl roku dal stejný výsledek jako dnes.
-# Aktualizace: v .venv spusť  python -m pip install -U beautifulsoup4,
-# otestuj (python -m unittest) a sem přepiš verze z  python -m pip freeze.
+# Zavislosti Job Agenta - presne verze kvuli opakovatelnemu buildu exe.
+# Prima zavislost je jen beautifulsoup4, zbyle dve jsou jeji zavislosti.
+# Pripnute jsou i ty, aby build za pul roku dal stejny vysledek jako dnes.
+# Aktualizace: v .venv spust  python -m pip install -U beautifulsoup4,
+# otestuj (python -m unittest) a sem prepis verze z  python -m pip freeze.
+#
+# Jen ASCII, bez diakritiky: pip cte soubor kodovanim systemu (na ceskych
+# Windows cp1250), UTF-8 diakritika ho shodi. Hlida tests/test_source_hygiene.py.
 beautifulsoup4==4.15.0
 soupsieve==4.0.1
 typing-extensions==4.16.0

@@ -55,6 +55,17 @@ class BuildError(Exception):
     pass
 
 
+def utf8_env(**extra: str) -> dict[str, str]:
+    """Prostředí pro podprocesy: Python v režimu UTF-8 bez ohledu na kódovou stránku stroje.
+
+    Proč: na českých Windows je výchozí kódování cp1250. pip by bez toho četl
+    requirements v cp1250, testy a PyInstaller by zapisovaly/četly soubory bez
+    uvedeného kódování jinak než na Linuxu. PYTHONUTF8=1 (PEP 540) přepne
+    výchozí kódování na UTF-8 pro open(), roury i proměnné prostředí.
+    """
+    return {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8", **extra}
+
+
 def step(title: str) -> None:
     print(f"\n=== {title}", flush=True)
 
@@ -62,6 +73,7 @@ def step(title: str) -> None:
 def run(args: list[str | Path], **kwargs) -> subprocess.CompletedProcess:
     printable = " ".join(str(a) for a in args)
     print(f"  > {printable}", flush=True)
+    kwargs.setdefault("env", utf8_env())
     result = subprocess.run([str(a) for a in args], **kwargs)
     if result.returncode != 0:
         raise BuildError(f"Příkaz skončil kódem {result.returncode}: {printable}")
@@ -79,11 +91,12 @@ def version() -> str:
 
 def check_git(allow_dirty: bool) -> str:
     step("1/9 Git")
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=ROOT, capture_output=True, text=True)
+    # encoding výslovně: text=True by jinak dekódoval výstup gitu kódováním stroje (cp1250).
+    git = dict(cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    status = subprocess.run(["git", "status", "--porcelain"], **git)
     if status.returncode != 0:
         raise BuildError("git status selhal – je to repozitář?")
-    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True,
-                            text=True).stdout.strip()
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], **git).stdout.strip()
     if status.stdout.strip():
         if not allow_dirty:
             raise BuildError("V repozitáři jsou necommitnuté změny. Commitni je, nebo pro zkušební build "
@@ -112,8 +125,16 @@ def check_sources() -> None:
 
 
 def run_tests() -> None:
-    step("4/9 Testy")
+    step("4/9 Testy (dvakrát: s UTF-8 a jako u kamaráda bez něj)")
+    # 1) S PYTHONUTF8=1 jako všechno ostatní v buildu.
     run([venv_python(), "-m", "unittest", "discover", "-s", "tests", "-q"], cwd=ROOT)
+    # 2) BEZ režimu UTF-8 a s EncodingWarning jako chybou: tak poběží exe u kamaráda
+    #    (Windows s cp1250). Chytí každé open()/read_text() bez encoding= v kódu,
+    #    kterým testy projdou. Statická kontrola v tests/test_source_hygiene.py
+    #    hlídá i zbytek.
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONUTF8", "PYTHONIOENCODING")}
+    run([venv_python(), "-X", "warn_default_encoding", "-W", "error::EncodingWarning",
+         "-m", "unittest", "discover", "-s", "tests", "-q"], cwd=ROOT, env=env)
 
 
 def pyinstaller() -> None:
@@ -183,10 +204,10 @@ def smoke_test() -> None:
         copy = Path(tmp) / "JobAgent"
         shutil.copytree(APP, copy)
         exe = copy / f"JobAgent{EXE_SUFFIX}"
-        # Zabalený program nemusí PYTHONIOENCODING respektovat a do roury pak píše
-        # v cp1250; errors="replace" zajistí, že zkouška ohlásí skutečnou chybu,
-        # ne UnicodeDecodeError na české uvítací zprávě.
-        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        # Zabalený program nemusí PYTHONUTF8/PYTHONIOENCODING respektovat a do
+        # roury pak píše v cp1250; errors="replace" zajistí, že zkouška ohlásí
+        # skutečnou chybu, ne UnicodeDecodeError na české uvítací zprávě.
+        env = utf8_env()
         out = run([exe, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env).stdout
         if version() not in out:
             raise BuildError(f"--version vypsal {out!r}, čekal jsem {version()}.")

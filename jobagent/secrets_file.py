@@ -29,7 +29,9 @@ def has_email_password(path: Path) -> bool:
         return False
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        # cp1250 („ANSI“) nebo poškozený soubor: radši nesahat. Při běhu na
+        # kódování upozorní load_config srozumitelnou chybou.
         return False
     return bool(str(data.get("email", {}).get("heslo", "")).strip())
 

@@ -199,6 +199,16 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   configu) a zkouška hotového exe v dočasné kopii (`--version`, první
   spuštění, `sablony`). Licence přibalených knihoven a Pythonu jdou do
   `licence\` (MIT/PSF vyžadují přiložit upozornění).
+- **Kódování:** každé čtení a zápis textu má `encoding=` (výchozí kódování je
+  na českých Windows cp1250, na Linuxu UTF-8 – testy v Linuxu by rozdíl
+  nikdy neukázaly). Hlídá to statická kontrola v `tests/test_source_hygiene.py`
+  (AST: `open`, `read_text`, `write_text`, `subprocess` s `text=True`,
+  `NamedTemporaryFile`) a build druhým během testů s `-X warn_default_encoding
+  -W error::EncodingWarning` bez režimu UTF-8. Podprocesy buildu běží
+  s `PYTHONUTF8=1`. `requirements*.txt` jen ASCII (pip je čte kódováním
+  systému). Soubory od uživatele (config, šablony, secrets) uložené v „ANSI“
+  program nespadne: config a secrets dostanou srozumitelnou chybu, šablona se
+  nahradí výchozí s varováním.
 - **Běh na pozadí** (`console.py`): bez konzole jsou `sys.stdout/stderr`
   None; nahradí se `os.devnull`, aby nespadl zápis (argparse, traceback).
   Planovací exe spuštěné dvojklikem ukáže okno se zprávou, ať uživatel
