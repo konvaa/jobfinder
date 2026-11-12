@@ -199,6 +199,24 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   configu) a zkouška hotového exe v dočasné kopii (`--version`, první
   spuštění, `sablony`). Licence přibalených knihoven a Pythonu jdou do
   `licence\` (MIT/PSF vyžadují přiložit upozornění).
+- **Balík pro kamarády:** kořen zipu = `NAVOD.txt` + složka `JobAgent\`
+  (návod je první, co je po rozbalení vidět). V `JobAgent\` nahoře jen dvě
+  exe, `NAVOD.txt`, `config.example.toml` a `_internal\` (licence uvnitř);
+  build to hlídá povolujícím seznamem. Exe vytažené ze složky (bez
+  `_internal\`) spadne už v zavaděči PyInstalleru – ten u konzolového exe
+  chybu jen vypíše na stderr a skončí, okno po dvojkliku problikne (okno se
+  zprávou ukazuje jen varianta bez konzole). Řešit by to šlo jen vlastním
+  zavaděčem, proto návod: celá složka, na plochu zástupce.
+- **Přejmenované exe:** zavaděč hledá data jako složka exe + `_internal` a archiv
+  má zabudovaný v exe, takže jméno nevadí; role (konzole / bez okna) je
+  vlastnost exe z buildu, ne jména. Zprávy radí skutečné jméno exe
+  (`firstrun.command_name`). Jen `JobAgent-planovac.exe` se hledá podle jména
+  (`install-schedule`) – hádat ho z hlaviček souborů by mohlo chytit cizí exe;
+  při přejmenování srozumitelná chyba, návod ho zakazuje přejmenovat.
+- **Vydání:** `__version__` → build z čistého gitu → test v Sandboxu
+  (`docs/TEST-SANDBOX.md`) → anotovaný tag `vX.Y.Z` → push → GitHub Release
+  se zipem a SHA256. Lokální pre-push hook pustí jen `main` a tagy `vX.Y.Z`
+  na commity z `main`, nic nemaže.
 - **Kódování:** každé čtení a zápis textu má `encoding=` (výchozí kódování je
   na českých Windows cp1250, na Linuxu UTF-8 – testy v Linuxu by rozdíl
   nikdy neukázaly). Hlídá to statická kontrola v `tests/test_source_hygiene.py`
@@ -229,8 +247,6 @@ originály.
   Opakované hodnocení vyřazených nesmí znovu platit za AI ani stahovat detail.
   Při chybě (klíč, kredit, síť) program pokračuje s bodováním podle slov
   a v e-mailu to uvede.
-- **Exe a Plánovač úloh (fáze 6, rozpracováno):** PyInstaller (onedir, dvě
-  exe), `install-schedule` se spuštěním po zmeškaném startu, návod krok za krokem.
 - **Filtr vzdálenosti:** přibalený seznam obcí a okresů se souřadnicemi
   (offline). Domov + `max_km`, vzdušná čára. U okresu je vzdálenost rozpětí
   (těžiště ± poloměr): jistě v okruhu, jistě mimo (vyřadit), nejisté (ponechat

@@ -14,13 +14,26 @@ kódem 2 (chyba v nastavení): s ukázkovým configem nemá smysl nic odesílat.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
 
-def command_name(frozen: bool) -> str:
-    """Jak se program spouští – do návodů ve zprávách."""
-    return "JobAgent.exe" if frozen else "python -m jobagent"
+def command_name(frozen: bool, executable: str | None = None) -> str:
+    """Jak se program spouští – do návodů ve zprávách.
+
+    Skutečné jméno exe, ne pevné „JobAgent.exe“: kamarád si exe může
+    přejmenovat (program funguje dál) a zkopírovaný příkaz musí sedět.
+    Výjimka: exe pro Plánovač (bez okna) radí konzolové JobAgent.exe, protože
+    jeho vlastní jméno by v příkazovém řádku nic nevypsalo.
+    """
+    if not frozen:
+        return "python -m jobagent"
+    # Oba oddělovače: windowsová cesta se musí rozložit i v testech na Linuxu.
+    name = re.split(r"[\\/]", executable)[-1] if executable else "JobAgent.exe"
+    if name.lower() == "jobagent-planovac.exe":
+        name = "JobAgent.exe"
+    return f'"{name}"' if " " in name else name
 
 
 def ensure_config(config_path: Path, example_path: Path) -> bool:

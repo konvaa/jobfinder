@@ -77,6 +77,12 @@ class FirstRunTests(TempApp):
 
     def test_command_name_in_messages(self):
         self.assertEqual(firstrun.command_name(True), "JobAgent.exe")
+        self.assertEqual(firstrun.command_name(False), "python -m jobagent")
+        # Přejmenované exe: zprávy radí skutečné jméno (s uvozovkami kvůli mezeře).
+        self.assertEqual(firstrun.command_name(True, r"C:\Programy\Hledač práce.exe"), '"Hledač práce.exe"')
+        self.assertEqual(firstrun.command_name(True, r"C:\x\Prace.exe"), "Prace.exe")
+        # Exe pro Plánovač radí konzolové exe, ne sebe.
+        self.assertEqual(firstrun.command_name(True, r"C:\x\JobAgent-planovac.exe"), "JobAgent.exe")
         self.assertIn("JobAgent.exe test-email", firstrun.welcome_text(Path("C:/x/config.toml"), "JobAgent.exe"))
 
 

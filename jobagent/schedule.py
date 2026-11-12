@@ -81,7 +81,12 @@ def planner_command(frozen: bool, executable: Path, app_dir: Path) -> Command:
     if frozen:
         program = executable.resolve().parent / PLANNER_EXE
         if not program.is_file():
-            raise ScheduleError(f"Vedle programu chybí {PLANNER_EXE}. Rozbal znovu celý zip (ne jen JobAgent.exe).")
+            # Hledá se podle jména záměrně: hádat „naše exe bez okna“ z hlaviček
+            # souborů by mohlo chytit cizí program, který si tam někdo odložil.
+            raise ScheduleError(
+                f"Vedle programu chybí {PLANNER_EXE}. Ten soubor spouští Plánovač úloh a nesmí se "
+                "přejmenovat ani přesunout. Vrať mu původní jméno, nebo rozbal znovu celou složku ze zipu."
+            )
         return Command(program, "run", program.parent)
     # pythonw.exe = Python bez okna konzole, leží vedle python.exe (i ve .venv\Scripts).
     pythonw = executable.resolve().with_name("pythonw.exe")

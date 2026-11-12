@@ -6,9 +6,13 @@ e-mail.
 
 *Česky: [README.cs.md](README.cs.md).*
 
-> **Status:** work in progress. Collecting, filtering, scoring and sending the
-> e-mail summary work. Optional AI scoring (phase 5) and a standalone Windows
-> `.exe` (phase 6) are not done yet.
+> **Status:** version 0.2. Collecting, filtering, scoring, the e-mail summary,
+> the daily run via Task Scheduler and a standalone Windows program work.
+> Optional AI scoring (phase 5) is not done yet.
+>
+> **Download:** the ready-made Windows program is in
+> [Releases](https://github.com/konvaa/jobfinder/releases); the step-by-step guide
+> (Czech) is [docs/NAVOD.md](docs/NAVOD.md), also included in the zip as `NAVOD.txt`.
 > The configuration and all messages are in Czech, because the tool is meant
 > for Czech job portals and Czech-speaking users.
 
@@ -24,9 +28,9 @@ e-mail.
    title-only words) and explains every point ("found X in the title").
 5. Merges duplicates across portals (by portal ID, or by title + company +
    town when an ID is missing; when unsure, it does not merge).
-6. Remembers offers in SQLite (seen, rejected, downloaded details); once sending
-   is done, offers are marked as sent only after a successful send, so you get
-   only new ones.
+6. Remembers offers in SQLite (seen, rejected, downloaded details). Offers are
+   marked as sent only after a successful send, so you get only new ones and
+   nothing is lost when sending fails.
 7. Renders an HTML summary: main table, "interesting by title only", others,
    and rejected offers with reasons.
 

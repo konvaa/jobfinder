@@ -170,7 +170,7 @@ class CommandTests(unittest.TestCase):
     def test_frozen_without_planner_exe(self):
         with self.assertRaises(schedule.ScheduleError) as ctx:
             schedule.planner_command(True, self.dir / "JobAgent.exe", self.dir)
-        self.assertIn("celý zip", str(ctx.exception))
+        self.assertIn("nesmí se přejmenovat", str(ctx.exception))
 
     def test_source_prefers_pythonw(self):
         (self.dir / "python.exe").write_bytes(b"")

@@ -165,7 +165,7 @@ def _main(argv: list[str]) -> int:
 
 
 def _cmd() -> str:
-    return firstrun.command_name(getattr(sys, "frozen", False))
+    return firstrun.command_name(getattr(sys, "frozen", False), sys.executable)
 
 
 def _start_help() -> str:

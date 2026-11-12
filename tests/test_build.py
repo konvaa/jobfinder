@@ -26,8 +26,8 @@ class ContentsTests(unittest.TestCase):
         (self.app / "_internal" / "jobagent" / "templates").mkdir(parents=True)
         (self.app / "_internal" / "jobagent" / "templates" / "email.html").write_text("x", encoding="utf-8")
         (self.app / "_internal" / "config.example.toml").write_text("x", encoding="utf-8")
-        (self.app / "JobAgent.exe").write_bytes(b"")
-        (self.app / "config.example.toml").write_text("x", encoding="utf-8")
+        for name in build.TOP_LEVEL - {"_internal"}:
+            (self.app / name).write_text("x", encoding="utf-8")
         patcher = mock.patch.object(build, "APP", self.app)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -51,7 +51,7 @@ class ContentsTests(unittest.TestCase):
                 path.unlink()
 
     def test_runtime_folders_fail(self):
-        for folder in ("logs", "vystup", "templates"):
+        for folder in ("logs", "vystup", "templates", "licence"):
             with self.subTest(folder=folder):
                 (self.app / folder).mkdir()
                 with self.assertRaises(build.BuildError):
@@ -64,9 +64,34 @@ class ContentsTests(unittest.TestCase):
             self.check()
         self.assertIn("config.example.toml", str(ctx.exception))
 
-    def test_example_files_allowed(self):
-        (self.app / "secrets.example.toml").write_text("x", encoding="utf-8")
+    def test_unexpected_top_level_file_fails(self):
+        # Povolující seznam: i neškodně vypadající soubor navíc nahoře build zastaví.
+        (self.app / "poznamky.txt").write_text("x", encoding="utf-8")
+        with self.assertRaises(build.BuildError) as ctx:
+            self.check()
+        self.assertIn("poznamky.txt", str(ctx.exception))
+
+    def test_missing_guide_or_planner_fails(self):
+        for name in (build.GUIDE, f"JobAgent-planovac{build.EXE_SUFFIX}"):
+            with self.subTest(name=name):
+                (self.app / name).unlink()
+                with self.assertRaises(build.BuildError) as ctx:
+                    self.check()
+                self.assertIn(f"CHYBÍ {name}", str(ctx.exception))
+                (self.app / name).write_text("x", encoding="utf-8")
+
+    def test_secrets_example_deep_inside_allowed(self):
+        (self.app / "_internal" / "secrets.example.toml").write_text("x", encoding="utf-8")
         self.check()
+
+
+class GuideTests(unittest.TestCase):
+    def test_guide_is_notepad_friendly(self):
+        data = build.guide_bytes()
+        self.assertTrue(data.startswith(b"\xef\xbb\xbf"))  # BOM: Poznámkový blok pozná UTF-8
+        body = data[3:]
+        self.assertNotIn(b"\n", body.replace(b"\r\n", b""))  # jen CRLF
+        self.assertIn("Extrahovat vše".encode("utf-8"), body)
 
 
 class MiscTests(unittest.TestCase):

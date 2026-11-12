@@ -9,10 +9,10 @@ Kroky (každý selhaný krok build zastaví):
   4. testy v tomtéž čistém prostředí (ověří i připnuté verze knihoven);
   5. PyInstaller podle jobagent.spec (onedir, dvě exe);
   6. doplnění souborů vedle exe (vzor configu, NAVOD.txt, licence);
-  7. kontrola obsahu – v balíku nesmí být config.toml, secrets*.toml, DB,
-     logy, výstupy ani upravené šablony;
+  7. kontrola obsahu – nahoře ve složce jen povolené položky; nikde
+     config.toml, secrets*.toml, DB, logy, výstupy ani upravené šablony;
   8. zkouška hotového exe v dočasné kopii (--version, první spuštění,
-     sablony) – ověří, že se přibalila data;
+     sablony, přejmenované exe) – ověří, že se přibalila data;
   9. zip + SHA256 + test-sandbox.wsb (Windows Sandbox, viz docs/NAVOD.md).
 
 Proč skript v Pythonu, ne .bat/.ps1: stejný jazyk jako projekt, žádné potíže
@@ -49,6 +49,12 @@ FORBIDDEN_NAMES = {"config.toml", "jobagent.db", "logs", "vystup", "samples", "p
 FORBIDDEN_PATTERNS = [re.compile(p) for p in (r"^secrets(?!\.example\.toml$).*\.toml$", r"^config\.toml\..*", r".*\.db$", r".*\.eml$")]
 # Licence přibalených knihoven (MIT/PSF vyžadují přiložit upozornění).
 LICENSED_PACKAGES = ("beautifulsoup4", "soupsieve", "typing_extensions")
+# Co smí být nahoře ve složce JobAgent\. Jen to, na co má kamarád sahat;
+# všechno ostatní (Python, knihovny, licence) je v _internal\. Seznam je
+# povolující: cokoli navíc build zastaví (pojistka proti omylem přibaleným souborům).
+TOP_LEVEL = {"_internal", f"JobAgent{EXE_SUFFIX}", f"JobAgent-planovac{EXE_SUFFIX}", "NAVOD.txt",
+             "config.example.toml"}
+GUIDE = "NAVOD.txt"
 
 
 class BuildError(Exception):
@@ -152,15 +158,10 @@ def pyinstaller() -> None:
 def add_files() -> None:
     step("6/9 Soubory vedle exe")
     shutil.copyfile(ROOT / "config.example.toml", APP / "config.example.toml")
-    navod = ROOT / "docs" / "NAVOD.md"
-    if navod.is_file():
-        # .txt: dvojklik otevře Poznámkový blok; .md by Windows nevěděla čím otevřít.
-        # CRLF, aby se starší Poznámkový blok nezalamoval do jednoho řádku.
-        text = navod.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\n", "\r\n")
-        (APP / "NAVOD.txt").write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
-    else:
-        print("  POZOR: docs/NAVOD.md zatím neexistuje (vznikne v 6e), NAVOD.txt nebude v balíku.")
-    licences = APP / "licence"
+    (APP / GUIDE).write_bytes(guide_bytes())
+    # Licence do _internal\: upozornění musí být přiložené, ne vystavené nahoře
+    # mezi soubory, na které má kamarád sahat.
+    licences = APP / "_internal" / "licence"
     licences.mkdir(exist_ok=True)
     shutil.copyfile(ROOT / "LICENSE", licences / "JobAgent-LICENSE.txt")
     # Licence knihoven a Pythonu z čistého prostředí: přesně ty verze, které jsou v exe.
@@ -180,15 +181,32 @@ def add_files() -> None:
     print("  licence: " + ", ".join(sorted(p.name for p in licences.iterdir())))
 
 
+def guide_bytes() -> bytes:
+    """docs/NAVOD.md jako NAVOD.txt: UTF-8 s BOM a CRLF.
+
+    .txt: dvojklik otevře Poznámkový blok; .md by Windows nevěděla čím otevřít.
+    BOM: Poznámkový blok podle něj pozná UTF-8 i na starších Windows. CRLF:
+    starší Poznámkový blok by jinak ukázal všechno na jednom řádku.
+    """
+    navod = ROOT / "docs" / "NAVOD.md"
+    if not navod.is_file():
+        raise BuildError("Chybí docs/NAVOD.md – bez návodu se balík pro kamarády nevydává.")
+    text = navod.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\n", "\r\n")
+    return b"\xef\xbb\xbf" + text.encode("utf-8")
+
+
 def check_contents() -> None:
     step("7/9 Kontrola obsahu balíku")
     problems = []
+    present = {p.name for p in APP.iterdir()}
+    for extra in sorted(present - TOP_LEVEL):
+        problems.append(f"{extra} (nahoře smí být jen: {', '.join(sorted(TOP_LEVEL))})")
+    for missing in sorted(TOP_LEVEL - present):
+        problems.append(f"CHYBÍ {missing}")
     for path in APP.rglob("*"):
         rel = path.relative_to(APP)
         if path.name in FORBIDDEN_NAMES or any(p.match(path.name) for p in FORBIDDEN_PATTERNS):
             problems.append(str(rel))
-    if (APP / "templates").exists():
-        problems.append("templates (upravené šablony patří uživateli, výchozí jsou v _internal)")
     if not (APP / "_internal" / "jobagent" / "templates" / "email.html").is_file():
         problems.append("CHYBÍ _internal/jobagent/templates (výchozí šablony)")
     if not (APP / "_internal" / "config.example.toml").is_file():
@@ -229,7 +247,14 @@ def smoke_test() -> None:
         run([exe, "sablony"], cwd=copy, **quiet)
         if len(list((copy / "templates").glob("*"))) < 5:
             raise BuildError("sablony nevyexportoval všechny šablony – chybí v _internal?")
-        print("  --version, první spuštění (bez Poznámkového bloku) a sablony: v pořádku")
+        # Kamarád si exe může přejmenovat: musí běžet dál a radit příkaz se svým jménem.
+        renamed = copy / f"Hledač práce{EXE_SUFFIX}"
+        shutil.copy2(exe, renamed)
+        help_text = subprocess.run([str(renamed)], cwd=copy, **quiet)
+        if help_text.returncode != 0 or f'"{renamed.name}" run' not in help_text.stdout:
+            raise BuildError(f"Přejmenované exe: kód {help_text.returncode}, nápověda neradí "
+                             f'"{renamed.name}".\n{help_text.stdout}{help_text.stderr}')
+        print("  --version, první spuštění (bez Poznámkového bloku), sablony, přejmenované exe: v pořádku")
     if Path(tmp).exists():
         print(f"  POZOR: dočasnou kopii {tmp} se nepodařilo smazat (drží ji jiný proces). "
               "Build je v pořádku, složku smaž později ručně.")
@@ -241,8 +266,11 @@ def package(commit: str) -> Path:
     zip_path = DIST / f"JobAgent-{version()}-{platform}.zip"
     zip_path.unlink(missing_ok=True)
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        # Kořen zipu: NAVOD.txt vedle složky JobAgent\. Po rozbalení je návod první,
+        # co kamarád uvidí – ještě než otevře složku s programem.
+        zf.writestr(GUIDE, guide_bytes())
         for path in sorted(APP.rglob("*")):
-            zf.write(path, Path("JobAgent") / path.relative_to(APP))  # v zipu jedna složka JobAgent\
+            zf.write(path, Path("JobAgent") / path.relative_to(APP))
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
     # Formát „hash  soubor“ přečte sha256sum i PowerShell (porovnáním s Get-FileHash).
     zip_path.with_name(zip_path.name + ".sha256").write_text(f"{digest}  {zip_path.name}\n", encoding="ascii")

@@ -6,11 +6,16 @@ e-mailem.
 
 *English: [README.md](README.md).*
 
-> **Stav:** rozpracováno. Sběr, filtry, bodování a odesílání souhrnu e-mailem
-> fungují. Volitelné AI hodnocení (fáze 5) a samostatný `.exe` pro Windows
-> (fáze 6) zatím nejsou.
-> Návod pro kamarády krok za krokem (exe, bez instalace Pythonu) přibude
-> ve fázi 6. Tohle je zatím návod pro spuštění ze zdrojáků.
+> **Stav:** verze 0.2. Sběr, filtry, bodování, souhrn e-mailem, denní běh
+> přes Plánovač úloh a samostatný program pro Windows fungují. Volitelné AI
+> hodnocení (fáze 5) zatím není.
+
+## Stažení (bez instalace Pythonu)
+
+Hotový program pro Windows je v [Releases](https://github.com/konvaa/jobfinder/releases):
+stáhni `JobAgent-<verze>-windows.zip` a postupuj podle
+**[návodu krok za krokem](docs/NAVOD.md)** (v zipu je jako `NAVOD.txt`).
+Zbytek tohoto README je pro spuštění ze zdrojáků a pro vývoj.
 
 ## Co dělá
 
@@ -24,9 +29,9 @@ e-mailem.
    v názvu) a u každého bodu napíše proč („nalezeno X v názvu“).
 5. Sloučí stejný inzerát z více portálů (podle ID, nebo název + firma + obec;
    při nejistotě neslučuje).
-6. Pamatuje si inzeráty v SQLite (viděné, vyřazené, stažené detaily). Až bude
-   hotové odesílání, inzerát se označí jako odeslaný až po úspěšném odeslání,
-   takže budeš dostávat jen nové.
+6. Pamatuje si inzeráty v SQLite (viděné, vyřazené, stažené detaily). Inzerát
+   se označí jako odeslaný až po úspěšném odeslání, takže budeš dostávat jen
+   nové a při výpadku nic nepřijde nazmar.
 7. Připraví HTML souhrn: hlavní tabulka, „zajímavé podle názvu“, ostatní
    a vyřazené s důvodem.
 
@@ -170,6 +175,21 @@ pro Plánovač úloh). Proč ne jeden soubor (onefile): rozbaluje se při každ�
 startu do `%TEMP%`, antiviry ho hlásí častěji a pauza po dvojkliku by
 nefungovala. Bez UPX komprese (víc falešných poplachů).
 
+### Vydání nové verze
+
+1. Změň `__version__` v `jobagent/__init__.py`, commitni.
+2. `py -3.12 tools\build.py` (z obyčejného okna, ne jako správce) – vznikne
+   `dist\JobAgent-<verze>-windows.zip` a `.sha256`.
+3. Vyzkoušej zip ve Windows Sandbox podle [docs/TEST-SANDBOX.md](docs/TEST-SANDBOX.md).
+4. Tag a push (pre-push hook pustí jen `main` a tagy `vX.Y.Z` na commity z `main`):
+   ```bat
+   git tag -a v0.2.0 -m "Job Agent 0.2.0"
+   git push origin main
+   git push origin v0.2.0
+   ```
+5. GitHub → Releases → *Draft a new release* → tag `v0.2.0` → nahraj zip
+   a do popisu vlož SHA256 z `.sha256` a co je nového.
+
 ## Kde co je
 
 | Cesta | Obsah |
@@ -181,6 +201,8 @@ nefungovala. Bez UPX komprese (víc falešných poplachů).
 | `samples/` | anonymizované stránky portálů = testovací data, viz `samples/README.md` |
 | `tools/anonymize_samples.py` | anonymizace skutečných stránek pro testy |
 | `tools/build.py`, `jobagent.spec`, `requirements-dev.txt` | build exe a zipu |
+| `docs/NAVOD.md` | návod pro uživatele exe (v zipu jako `NAVOD.txt`) |
+| `docs/TEST-SANDBOX.md` | postup ověření zipu ve Windows Sandbox |
 | `docs/ARCHITEKTURA.md` | rozhodnutí a jejich důvody |
 | `config.toml`, `secrets.toml`, `jobagent.db`, `logs/`, `vystup/` | osobní a běhová data (nejsou v gitu) |
 
