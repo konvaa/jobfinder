@@ -94,6 +94,37 @@ class GuideTests(unittest.TestCase):
         self.assertIn("Extrahovat vše".encode("utf-8"), body)
 
 
+class Utf8ModeTests(unittest.TestCase):
+    """Exe má UTF-8 režim (jobagent.spec) a build ho ověřuje (run_exe, log exe bez okna)."""
+
+    def test_spec_enables_utf8_mode_for_both_exes(self):
+        spec = (ROOT / "jobagent.spec").read_text(encoding="utf-8")
+        self.assertIn('RUNTIME_OPTIONS = [("X utf8", None, "OPTION")]', spec)
+        # Volby jsou pro každé exe zvlášť – musí je dostat konzolové i to bez okna.
+        self.assertEqual(spec.count("pyz, a.scripts, RUNTIME_OPTIONS,"), 2)
+        # 'X utf8_mode=1' dnešní zavaděč tiše ignoruje; smí být jen v komentáři.
+        code = "\n".join(line.split("#")[0] for line in spec.splitlines())
+        self.assertNotIn("utf8_mode", code)
+
+    def test_strict_decoding_rejects_cp1250(self):
+        fake = mock.Mock(returncode=0, stdout="Příkazy: \"Hledač práce.exe\"".encode("cp1250"), stderr=b"")
+        with mock.patch.object(build.subprocess, "run", return_value=fake):
+            with self.assertRaises(build.BuildError) as ctx:
+                build.run_exe([Path("JobAgent.exe")], ROOT)
+        self.assertIn("X utf8", str(ctx.exception))
+
+    def test_strict_decoding_accepts_utf8(self):
+        fake = mock.Mock(returncode=0, stdout="Příkazy".encode("utf-8"), stderr=b"")
+        with mock.patch.object(build.subprocess, "run", return_value=fake):
+            self.assertEqual(build.run_exe([Path("JobAgent.exe")], ROOT), (0, "Příkazy"))
+
+    def test_log_line_matches_build_check(self):
+        # build hledá v logu „(JobAgent-planovac.exe, UTF-8 režim: ano)“.
+        cli = (ROOT / "jobagent" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn('"jobagent %s (%s, UTF-8 režim: %s), příkaz %s, složka %s"', cli)
+        self.assertIn("UTF-8 režim: ano)", (ROOT / "tools" / "build.py").read_text(encoding="utf-8"))
+
+
 class MiscTests(unittest.TestCase):
     def test_version_matches_package(self):
         from jobagent import __version__

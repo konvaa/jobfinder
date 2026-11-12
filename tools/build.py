@@ -216,6 +216,26 @@ def check_contents() -> None:
     print("  v pořádku")
 
 
+def run_exe(args: list, cwd: Path) -> tuple[int, str]:
+    """Spustit hotové exe bez terminálu a vrátit (kód, výstup) dekódovaný STRIKTNĚ jako UTF-8.
+
+    Striktně, ne errors="replace": exe má zapnutý UTF-8 režim (jobagent.spec,
+    RUNTIME_OPTIONS), takže výstup musí být platné UTF-8 na každých Windows.
+    Kdyby volba chyběla nebo nezabrala, exe by do roury psalo v cp1250 a tady
+    by to skončilo jasnou chybou místo rozsypaných znaků („Hleda� pr�ce“).
+    stdin=DEVNULL + JOBAGENT_NO_EDITOR: program se na nic neptá a nic neotevírá
+    (Poznámkový blok by zůstal viset a držel dočasnou složku).
+    """
+    result = subprocess.run([str(a) for a in args], cwd=cwd, capture_output=True, stdin=subprocess.DEVNULL,
+                            env=utf8_env(JOBAGENT_NO_EDITOR="1"))
+    raw = result.stdout + result.stderr
+    try:
+        return result.returncode, raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BuildError(f"Výstup {Path(str(args[0])).name} není platné UTF-8 ({exc}). Chybí v jobagent.spec "
+                         f"volba ('X utf8', None, 'OPTION')?\n{raw.decode('utf-8', 'replace')}") from None
+
+
 def smoke_test() -> None:
     step("8/9 Zkouška hotového exe (v dočasné kopii, dist zůstane čistý)")
     # ignore_cleanup_errors: úklid dočasné kopie nesmí shodit build, když zkouška
@@ -224,37 +244,44 @@ def smoke_test() -> None:
         copy = Path(tmp) / "JobAgent"
         shutil.copytree(APP, copy)
         exe = copy / f"JobAgent{EXE_SUFFIX}"
-        # Zabalený program nemusí PYTHONUTF8/PYTHONIOENCODING respektovat a do
-        # roury pak píše v cp1250; errors="replace" zajistí, že zkouška ohlásí
-        # skutečnou chybu, ne UnicodeDecodeError na české uvítací zprávě.
-        # JOBAGENT_NO_EDITOR: první spuštění nesmí otevřít Poznámkový blok (zůstal by
-        # viset a držel by dočasnou složku). Druhá pojistka: stdin=DEVNULL, bez terminálu
-        # se program na nic neptá a nic neotevírá (console.can_ask).
-        env = utf8_env(JOBAGENT_NO_EDITOR="1")
-        quiet = dict(capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
-                     stdin=subprocess.DEVNULL)
-        out = run([exe, "--version"], **quiet).stdout
-        if version() not in out:
-            raise BuildError(f"--version vypsal {out!r}, čekal jsem {version()}.")
+        planner = copy / f"JobAgent-planovac{EXE_SUFFIX}"
+
+        code, out = run_exe([exe, "--version"], copy)
+        if code != 0 or version() not in out:
+            raise BuildError(f"--version: kód {code}, vypsal {out!r}, čekal jsem {version()}.")
+
         # Bez parametrů = první spuštění: má vzniknout config.toml ze vzoru a kód 2.
-        first = subprocess.run([str(exe)], cwd=copy, **quiet)
-        if first.returncode != 2 or not (copy / "config.toml").is_file():
-            raise BuildError(f"První spuštění: kód {first.returncode}, config.toml "
-                             f"{'vznikl' if (copy / 'config.toml').exists() else 'nevznikl'}.\n{first.stdout}{first.stderr}")
-        if "jsem otevřel v Poznámkovém bloku" in first.stdout:  # věta z cli._first_run_if_needed
+        code, out = run_exe([exe], copy)
+        if code != 2 or not (copy / "config.toml").is_file():
+            raise BuildError(f"První spuštění: kód {code}, config.toml "
+                             f"{'vznikl' if (copy / 'config.toml').exists() else 'nevznikl'}.\n{out}")
+        if "jsem otevřel v Poznámkovém bloku" in out:  # věta z cli._first_run_if_needed
             raise BuildError("První spuštění při zkoušce otevřelo Poznámkový blok – exe nerespektuje "
                              "JOBAGENT_NO_EDITOR / chybějící terminál.")
-        run([exe, "sablony"], cwd=copy, **quiet)
-        if len(list((copy / "templates").glob("*"))) < 5:
-            raise BuildError("sablony nevyexportoval všechny šablony – chybí v _internal?")
+
+        # Druhé spuštění = nápověda. Diakritika ověří kódování i bez přejmenování.
+        code, out = run_exe([exe], copy)
+        if code != 0 or "Příkazy" not in out:
+            raise BuildError(f"Nápověda: kód {code}, chybí v ní „Příkazy“ (diakritika?).\n{out}")
+
+        code, out = run_exe([exe, "sablony"], copy)
+        if code != 0 or len(list((copy / "templates").glob("*"))) < 5:
+            raise BuildError(f"sablony: kód {code}, nevyexportoval všechny šablony – chybí v _internal?\n{out}")
+
+        # Exe bez okna nemá výstup – UTF-8 režim a jméno ověří úvodní řádek logu.
+        code, _ = run_exe([planner, "sablony"], copy)
+        log_text = (copy / "logs" / "jobagent.log").read_text(encoding="utf-8")
+        if code != 0 or f"(JobAgent-planovac{EXE_SUFFIX}, UTF-8 režim: ano)" not in log_text:
+            raise BuildError(f"JobAgent-planovac: kód {code}, v logu chybí „UTF-8 režim: ano“.")
+
         # Kamarád si exe může přejmenovat: musí běžet dál a radit příkaz se svým jménem.
         renamed = copy / f"Hledač práce{EXE_SUFFIX}"
         shutil.copy2(exe, renamed)
-        help_text = subprocess.run([str(renamed)], cwd=copy, **quiet)
-        if help_text.returncode != 0 or f'"{renamed.name}" run' not in help_text.stdout:
-            raise BuildError(f"Přejmenované exe: kód {help_text.returncode}, nápověda neradí "
-                             f'"{renamed.name}".\n{help_text.stdout}{help_text.stderr}')
-        print("  --version, první spuštění (bez Poznámkového bloku), sablony, přejmenované exe: v pořádku")
+        code, out = run_exe([renamed], copy)
+        if code != 0 or f'"{renamed.name}" run' not in out:
+            raise BuildError(f"Přejmenované exe: kód {code}, nápověda neradí \"{renamed.name}\".\n{out}")
+        print("  --version, první spuštění (bez Poznámkového bloku), nápověda v UTF-8, sablony, "
+              "exe bez okna v UTF-8 režimu, přejmenované exe: v pořádku")
     if Path(tmp).exists():
         print(f"  POZOR: dočasnou kopii {tmp} se nepodařilo smazat (drží ji jiný proces). "
               "Build je v pořádku, složku smaž později ručně.")

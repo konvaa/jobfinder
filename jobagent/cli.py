@@ -130,7 +130,11 @@ def _main(argv: list[str]) -> int:
 
     args = build_parser().parse_args(argv)
     log_path = setup_logging(paths.log_dir(), verbose=args.verbose)
-    log.info("jobagent %s, příkaz %s, složka %s", __version__, args.command, paths.app_dir())
+    # Jméno exe a UTF-8 režim v logu: jediný způsob, jak ověřit nastavení u exe
+    # bez okna (JobAgent-planovac.exe) – build to tak kontroluje.
+    log.info("jobagent %s (%s, UTF-8 režim: %s), příkaz %s, složka %s", __version__,
+             Path(sys.executable).name if _frozen() else "zdrojáky",
+             "ano" if sys.flags.utf8_mode else "ne", args.command, paths.app_dir())
     try:
         if args.command in NEEDS_CONFIG and (code := _first_run_if_needed()):
             return code
