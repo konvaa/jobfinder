@@ -28,6 +28,7 @@ from jobagent.config import Search, load_config
 from jobagent.fetch import FetchError
 from jobagent.models import HiddenSalary, Job
 from jobagent.storage import SCHEMA_VERSION, Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES, FakeFetcher, sample
 from tests.test_pipeline import LISTING_URL as JOBS_URL, make_web
@@ -127,7 +128,7 @@ class VertiflexTests(unittest.TestCase):
         self.assertIn("-10 mzda skrytá, pravděpodobně pod minimem", job.score_reasons)
         without = scoring.score(replace(job, hidden_salary=None), self.cfg.scoring)[0]
         self.assertEqual(job.score, without - 10)
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("skrytá, podle prace.cz pravděpodobně pod minimem", html)
 
     def test_all_cards(self):
@@ -143,7 +144,7 @@ class VertiflexTests(unittest.TestCase):
         self.assertIn("pod minimem", onsemi[0].reject_reason)
         self.assertIsNone(onsemi[0].hidden_salary)
         self.assertEqual(report.hidden_salary_counts(), (3, 3))
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("skrytá, podle prace.cz ≥ 50 000 Kč", html)
         self.assertIn("skrytá mzda: 3 pravděpodobně pod minimem, 3 nad minimem", html)
         self.assertIsNone(report.balance_error())
@@ -157,7 +158,7 @@ class VertiflexTests(unittest.TestCase):
         self.assertEqual(opmobility.title_score, plain - 10)
         # Kompaktní řádek sekce „Ostatní“ (bez popisu): mzda i důvod srážky musí být vidět.
         self.assertIn(opmobility, report.no_text_other)
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         row = next(m.group(0) for m in re.finditer(r'<div style="padding:4px 0.*?</div>', html, re.S)
                    if "opmobility.jobs.cz" in m.group(0))
         self.assertIn("skrytá, podle prace.cz pravděpodobně pod minimem", row)

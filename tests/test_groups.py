@@ -13,6 +13,7 @@ from jobagent.fetch import FetchError
 from jobagent.models import Job
 from jobagent.scoring import score, title_points
 from jobagent.storage import Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES, sample
 from tests.test_pipeline import LISTING_URL, NOW, make_web
@@ -78,7 +79,7 @@ class GroupTests(unittest.TestCase):
         with self.assertLogs("jobagent.pipeline", level="WARNING"):
             for _ in range(3):
                 report = self.run_once(FailingDetailWeb())
-        html = emailer.render(report, ROOT / "templates", now=NOW, threshold=self.cfg.summary.score_threshold)
+        html = emailer.render(report, Templates(), now=NOW, threshold=self.cfg.summary.score_threshold)
         self.assertIn("Zajímavé podle názvu – bez popisu, otevři ručně (1)", html)
         self.assertIn("1 podle názvu", html)
         self.assertNotIn("čeká na detail", html)

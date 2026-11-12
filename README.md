@@ -86,6 +86,7 @@ python -m jobagent run                    :: live run: collect, score, send the 
 python -m jobagent run --dry-run          :: full run without sending; opens the e-mail preview in a browser
 python -m jobagent test-email             :: send a short test e-mail (server, password, recipients)
 python -m jobagent test-email --nahled    :: resend the latest saved message from vystup/ (subject "TEST – …")
+python -m jobagent sablony                :: create templates/ with editable e-mail templates
 python -m jobagent run --dry-run -v       :: the same with a detailed console log
 python -m jobagent vysvetli <url|file>    :: why an offer got its score: text source, removed lines,
                                           :: filters, keywords with place, points and snippet

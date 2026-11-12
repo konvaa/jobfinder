@@ -40,9 +40,25 @@ def log_dir() -> Path:
     return app_dir() / "logs"
 
 
-def templates_dir() -> Path:
-    # Šablony leží vedle exe, ne uvnitř něj, aby šly upravit bez rebuildu.
+def user_templates_dir() -> Path:
+    """Upravené šablony (vytvoří je `jobagent sablony`). Výchozí jsou v balíčku, viz templating.py."""
     return app_dir() / "templates"
+
+
+def bundled_dir() -> Path:
+    """Soubory přibalené k programu, které uživatel neupravuje (vzor configu).
+
+    U exe je to _internal\ (sys._MEIPASS), ze zdrojáků kořen projektu. Na rozdíl
+    od app_dir() tady nic nepřežije aktualizaci – a nemá: vzor má vždy odpovídat
+    verzi programu.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    return Path(__file__).resolve().parent.parent
+
+
+def example_config() -> Path:
+    return bundled_dir() / "config.example.toml"
 
 
 def output_dir() -> Path:

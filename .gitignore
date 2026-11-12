@@ -19,6 +19,10 @@ secrets*.toml
 logs/
 *.log
 vystup/
+# Upravené šablony uživatele (příkaz `jobagent sablony`). Výchozí šablony
+# jsou v jobagent/templates/ a ty do gitu patří. Lomítko na začátku = jen
+# složka v kořeni, ne jobagent/templates/.
+/templates/
 # Automaticky uložené detaily neznámých webů: podklad k prozkoumání, ne testovací data.
 # Když z nějakého chceš udělat test, přesuň ho o úroveň výš do samples/.
 samples/nezname/

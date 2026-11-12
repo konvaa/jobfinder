@@ -22,7 +22,8 @@ def setup_logging(log_dir: Path, verbose: bool = False) -> Path:
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
     # Opakované volání (např. v testech) nesmí přidávat duplicitní handlery.
-    root.handlers.clear()
+    # Staré se nejdřív zavřou: na Windows by otevřený log zůstal zamčený.
+    close_logging()
 
     # encoding='utf-8' výslovně: na Windows by jinak byl použit cp1250
     # a log by se v jiných editorech zobrazoval rozsypaně.
@@ -39,3 +40,10 @@ def setup_logging(log_dir: Path, verbose: bool = False) -> Path:
         root.addHandler(console)
 
     return log_path
+
+
+def close_logging() -> None:
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        handler.close()
+        root.removeHandler(handler)

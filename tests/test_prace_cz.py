@@ -19,6 +19,7 @@ from jobagent.dedup import group_duplicates
 from jobagent.detail import extract_detail
 from jobagent.models import Job
 from jobagent.storage import Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES, FakeFetcher, sample
 from tests.test_pipeline import LISTING_URL as JOBS_URL, make_web
@@ -178,7 +179,7 @@ class CrossPortalPipelineTests(unittest.TestCase):
         self.assertGreaterEqual(report.duplicates, 1)
         self.assertFalse([u for u in web.requested if VERTIFLEX_UUID in u], "detail z prace.cz se nemá stahovat")
         self.assertIsNone(report.balance_error())
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("jobs.cz + prace.cz", html)
 
     def test_only_on_prace_count(self):
@@ -190,7 +191,7 @@ class CrossPortalPipelineTests(unittest.TestCase):
                          [j.title for j in prace_only])  # VertiFlex je i na jobs.cz → nepočítá se
         with_id = sum(1 for j in prace_only if j.alt_key.startswith("jobs.cz:"))
         self.assertEqual(report.only_on_secondary(), {"prace.cz": (len(prace_only), with_id)})
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn(f"jen na prace.cz {len(prace_only)} (z toho {with_id} existuje i na jobs.cz, jen mimo tvá hledání)", html)
 
     def test_only_on_prace_without_jobs_cz_id(self):

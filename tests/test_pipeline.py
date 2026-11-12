@@ -9,6 +9,7 @@ from jobagent import emailer, pipeline
 from jobagent.collectors.jobs_cz import JobsCzCollector
 from jobagent.config import ConfigError, load_config
 from jobagent.storage import Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES, FakeFetcher, sample
 
@@ -123,7 +124,7 @@ class PipelineTests(unittest.TestCase):
     def test_render_email(self):
         report = self.run_once()
         report.new_jobs[0].title = "<script>alert(1)</script>"
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("nalezeno 8", html)
         self.assertIn("NÁHLED", html)
         self.assertNotIn("<script>alert", html)  # text z webu je escapovaný

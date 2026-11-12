@@ -1,7 +1,7 @@
 """Vykreslení e-mailu ze šablon a náhled pro `--dry-run`.
 
-Šablony leží ve složce templates/ vedle programu a používají string.Template
-ze standardní knihovny ($pozice, $firma …). Proč ne Jinja2: další závislost,
+Šablony (viz templating.py: výchozí v programu, upravené v templates/ vedle
+něj) používají string.Template ze standardní knihovny ($pozice, $firma …). Proč ne Jinja2: další závislost,
 a hlavně v šabloně nejde napsat kód, takže úprava od neprogramátora nic
 nerozbije. Neznámá proměnná zůstane v e-mailu vidět jako „$preklep“
 (safe_substitute), takže se chyba dá najít okem a program kvůli ní nespadne.
@@ -20,7 +20,7 @@ s řádky: webmail Seznamu při čištění HTML odstraní <details> i S OBSAHEM
 (ověřeno 9. 11. 2026), jiní klienti značku ignorují nebo ji sbalí. Sbalitelné
 <details> dostane jen příloha (collapsible=True), která se otevírá v prohlížeči.
 
-Textová verze (templates/email.txt) vzniká ze stejných dat jako HTML. Proč
+Textová verze (email.txt) vzniká ze stejných dat jako HTML. Proč
 obě: klienti bez HTML ji zobrazí a spamové filtry hodnotí zprávu jen s HTML
 hůř. Odesílání samo je v mailer.py.
 
@@ -38,37 +38,18 @@ import re
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from string import Template
 
 from jobagent import collectors
 from jobagent.models import Job
 from jobagent.pipeline import RunReport
+from jobagent.templating import TEMPLATE_FILES, Templates, TemplateError  # noqa: F401 (re-export)
 
 log = logging.getLogger(__name__)
 
-TEMPLATE_FILES = ("email.html", "nabidka.html", "ostatni.html", "vyrazeno.html", "email.txt")
 # Nad tuto velikost HTML jde celý souhrn jako příloha (Gmail zkracuje kolem 102 kB).
 BODY_LIMIT_BYTES = 100_000
 BODY_OTHER_ROWS = 20
 ATTACHMENT_NAME = "job-agent-souhrn.html"
-
-
-class TemplateError(Exception):
-    pass
-
-
-def _load(templates_dir: Path, name: str) -> Template:
-    path = templates_dir / name
-    if not path.exists():
-        raise TemplateError(
-            f"Chybí šablona {path}. Složka templates/ musí ležet vedle programu (zkopíruj ji z původního balíčku)."
-        )
-    text = path.read_text(encoding="utf-8-sig")
-    # Komentáře v šabloně slouží jako návod a vyjmenovávají proměnné ($nabidky …).
-    # Kdyby zůstaly, Template by je nahradil i tam a e-mail by obsahoval
-    # celou tabulku podruhé (skrytě v komentáři). Proto je před vykreslením odstraníme.
-    text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-    return Template(text)
 
 
 def _e(value: object) -> str:
@@ -82,7 +63,7 @@ def split_by_threshold(jobs: list[Job], threshold: int | None) -> tuple[list[Job
     return [j for j in jobs if j.score >= threshold], [j for j in jobs if j.score < threshold]
 
 
-def render(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None,
+def render(report: RunReport, templates: Templates | None = None, now: datetime | None = None, threshold: int | None = None,
            others_limit: int | None = None, collapsible: bool = False) -> str:
     """HTML souhrnu. others_limit: kolik „ostatních“ ukázat (zbytek je v příloze).
 
@@ -90,10 +71,11 @@ def render(report: RunReport, templates_dir: Path, now: datetime | None = None, 
     v prohlížeči. Výchozí False je bezpečný pro tělo e-mailu (viz hlavička modulu).
     """
     now = now or datetime.now()
-    page = _load(templates_dir, "email.html")
-    row = _load(templates_dir, "nabidka.html")
-    other_row = _load(templates_dir, "ostatni.html")
-    rejected_row = _load(templates_dir, "vyrazeno.html")
+    templates = templates or Templates()
+    page = templates.get("email.html")
+    row = templates.get("nabidka.html")
+    other_row = templates.get("ostatni.html")
+    rejected_row = templates.get("vyrazeno.html")
 
     main, others = split_by_threshold(report.new_jobs, threshold)
     others = others + report.no_text_other  # bez popisu a bez bodů v názvu: jen pro úplnost
@@ -295,11 +277,12 @@ def subject(report: RunReport, prefix: str, threshold: int | None = None) -> str
     return text
 
 
-def render_text(report: RunReport, templates_dir: Path, now: datetime | None = None, threshold: int | None = None,
+def render_text(report: RunReport, templates: Templates | None = None, now: datetime | None = None, threshold: int | None = None,
                 others_limit: int | None = None) -> str:
-    """Čistě textová verze stejného souhrnu (šablona templates/email.txt)."""
+    """Čistě textová verze stejného souhrnu (šablona email.txt)."""
     now = now or datetime.now()
-    page = _load_text(templates_dir, "email.txt")
+    templates = templates or Templates()
+    page = templates.get("email.txt")
     main, others = split_by_threshold(report.new_jobs, threshold)
     others = others + report.no_text_other
 
@@ -362,31 +345,20 @@ def render_text(report: RunReport, templates_dir: Path, now: datetime | None = N
     return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
 
 
-def build_bodies(report: RunReport, templates_dir: Path, now: datetime | None = None,
+def build_bodies(report: RunReport, templates: Templates | None = None, now: datetime | None = None,
                  threshold: int | None = None) -> tuple[str, str, str | None]:
     """(HTML těla, text těla, HTML přílohy nebo None) pro odeslání.
 
     Celý souhrn se vykreslí vždy. Když přesáhne BODY_LIMIT_BYTES, tělo se
     zkrátí na prvních BODY_OTHER_ROWS „ostatních“ a celý souhrn jde jako příloha.
     """
-    full_body = render(report, templates_dir, now, threshold)
+    full_body = render(report, templates, now, threshold)
     if len(full_body.encode("utf-8")) <= BODY_LIMIT_BYTES:
-        return full_body, render_text(report, templates_dir, now, threshold), None
-    return (render(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
-            render_text(report, templates_dir, now, threshold, others_limit=BODY_OTHER_ROWS),
+        return full_body, render_text(report, templates, now, threshold), None
+    return (render(report, templates, now, threshold, others_limit=BODY_OTHER_ROWS),
+            render_text(report, templates, now, threshold, others_limit=BODY_OTHER_ROWS),
             # Příloha se otevírá v prohlížeči, tam <details> funguje a dlouhý seznam sbalí.
-            render(report, templates_dir, now, threshold, collapsible=True))
-
-
-def _load_text(templates_dir: Path, name: str) -> Template:
-    path = templates_dir / name
-    if not path.exists():
-        raise TemplateError(
-            f"Chybí šablona {path}. Složka templates/ musí ležet vedle programu (zkopíruj ji z původního balíčku)."
-        )
-    lines = path.read_text(encoding="utf-8-sig").splitlines()
-    # Řádky začínající „##“ jsou návod v šabloně (jako <!-- --> v HTML), do e-mailu nejdou.
-    return Template("\n".join(line for line in lines if not line.startswith("##")))
+            render(report, templates, now, threshold, collapsible=True))
 
 
 def _job_plain(job: Job, score: int | None = None) -> dict[str, str]:

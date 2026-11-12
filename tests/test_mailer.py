@@ -23,12 +23,13 @@ from jobagent.config import EmailCfg, load_config
 from jobagent.models import Job
 from jobagent.pipeline import RunReport, SearchStat
 from jobagent.storage import Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES
 from tests.test_pipeline import LISTING_URL, make_web
 
 ROOT = SAMPLES.parent
-TEMPLATES = ROOT / "templates"
+TEMPLATES = Templates()
 NOW = datetime(2026, 11, 4, 10, 0)
 
 
@@ -359,7 +360,6 @@ class LiveRunTests(unittest.TestCase):
         self.cfg.secrets.email_password = "heslo"
         self.patches = [
             mock.patch.object(paths, "app_dir", return_value=self.app),
-            mock.patch.object(paths, "templates_dir", return_value=TEMPLATES),
             mock.patch.object(cli, "load_config", return_value=self.cfg),
             mock.patch.object(cli, "_make_fetcher", side_effect=lambda c: make_web()),
         ]
@@ -409,6 +409,19 @@ class LiveRunTests(unittest.TestCase):
         saved = email.message_from_bytes(emls[0].read_bytes(), policy=policy.default)
         self.assertIn("NÁHLED (dry-run)", saved.get_body(("html",)).get_content())
         self.assertNotIn("<details", saved.get_body(("html",)).get_content())
+
+    def test_custom_template_warning_reaches_email(self):
+        from jobagent.templating import export_defaults
+        custom = self.app / "templates"
+        export_defaults(custom)
+        page = custom / "email.html"
+        page.write_text(page.read_text(encoding="utf-8").replace("$priloha", ""), encoding="utf-8")
+        with mock.patch.object(mailer, "send"), self.assertLogs("jobagent", level="WARNING") as logs:
+            cli.cmd_run(argparse.Namespace(dry_run=True, no_open=True))
+        self.assertTrue(any("nemá $priloha" in line for line in logs.output))
+        eml = next((self.app / "vystup").glob("email_*.eml"))
+        body = email.message_from_bytes(eml.read_bytes(), policy=policy.default).get_body(("html",)).get_content()
+        self.assertIn("nemá $priloha", body)
 
     def test_run_cleans_old_files(self):
         out = self.app / "vystup"

@@ -13,6 +13,7 @@ from jobagent.fetch import Fetcher, FetchError, Response, RobotsUnavailable
 from jobagent.models import Job
 from jobagent.scoring import score
 from jobagent.storage import Storage
+from jobagent.templating import Templates
 
 from tests.helpers import SAMPLES, FakeFetcher, sample
 from tests.test_pipeline import LISTING_URL, NOW, make_web
@@ -60,7 +61,7 @@ class AccountingTests(BasePipelineTest):
         second = type(self.cfg.searches[0])(name="Druhé", url=LISTING_URL + "&jine=1")
         self.cfg.searches.append(second)
         report = self.run_once()
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("nalezeno 16 = 8 unikátních + 8 opakovaných", html)
 
 
@@ -155,7 +156,7 @@ class RobotsTests(unittest.TestCase):
         report = pipeline.run(cfg, storage, Down({}), dry_run=True, now=NOW)
         self.assertEqual(report.skipped, len(cfg.searches))
         self.assertEqual(report.errors, 0)
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn(f"přeskočeno {len(cfg.searches)}", html)
         self.assertIn("PŘESKOČENO", html)
 
@@ -239,17 +240,17 @@ class ThresholdEmailTests(BasePipelineTest):
         threshold = max(j.score for j in report.new_jobs)  # nad hranicí jen ten nejlepší
         main, others = emailer.split_by_threshold(report.new_jobs, threshold)
         self.assertTrue(main and others)
-        html = emailer.render(report, ROOT / "templates", now=NOW, threshold=threshold)
+        html = emailer.render(report, Templates(), now=NOW, threshold=threshold)
         self.assertIn(f"Ostatní nabídky ({len(others)})", html)
         # Tělo e-mailu: obyčejný nadpis, ne <details> (webmail Seznamu ho smaže i s obsahem).
         self.assertNotIn("<details", html)
-        collapsed = emailer.render(report, ROOT / "templates", now=NOW, threshold=threshold, collapsible=True)
+        collapsed = emailer.render(report, Templates(), now=NOW, threshold=threshold, collapsible=True)
         self.assertIn("<details", collapsed)  # příloha pro prohlížeč
         self.assertIn(f"({len(main)} v hlavní tabulce, {len(others)} ostatních)", html)
         self.assertEqual(len(main) + len(others), len(report.new_jobs))
 
     def test_no_threshold_no_section(self):
-        html = emailer.render(self.run_once(), ROOT / "templates", now=NOW, threshold=None)
+        html = emailer.render(self.run_once(), Templates(), now=NOW, threshold=None)
         self.assertNotIn("Ostatní nabídky", html)
 
 
@@ -283,7 +284,7 @@ class FollowUpTests(BasePipelineTest):
         web.pages["https://www.jobs.cz/rpd/"] = sample("syntetika_js_kostra_almacareer.html")
         report = self.run_once(web)
         self.assertEqual(report.listing_only, 7)
-        html = emailer.render(report, ROOT / "templates", now=NOW)
+        html = emailer.render(report, Templates(), now=NOW)
         self.assertIn("z nich 7 jen podle výpisu", html)
         self.assertIsNone(report.balance_error())
 

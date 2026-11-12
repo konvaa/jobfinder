@@ -100,6 +100,7 @@ python -m jobagent run                 :: ostrý běh: sběr, hodnocení, odesl�
 python -m jobagent run --dry-run       :: běh bez odeslání, náhled e-mailu se otevře v prohlížeči
 python -m jobagent test-email          :: krátký zkušební e-mail (ověří server, heslo, příjemce)
 python -m jobagent test-email --nahled :: znovu pošle poslední uloženou zprávu z vystup\ (předmět „TEST – …“)
+python -m jobagent sablony             :: vytvoří templates\ s šablonami e-mailu k úpravě
 python -m jobagent run --dry-run -v    :: totéž s podrobným výpisem
 python -m jobagent vysvetli <url>      :: proč má inzerát takové skóre: zdroj textu, odstraněné řádky,
                                        :: text, filtry, nalezená slova s místem, body a úryvkem
@@ -126,7 +127,8 @@ se při dalším běhu smažou. Maže se jen `email_*`, jiné soubory ve složce
 |---|---|
 | `jobagent/` | zdrojáky, popis v hlavičce každého souboru |
 | `jobagent/collectors/` | jeden soubor na portál + registr v `__init__.py` |
-| `templates/` | šablony e-mailu (upravitelné bez programování) |
+| `jobagent/templates/` | výchozí šablony e-mailu (součást programu) |
+| `templates/` | tvoje upravené šablony; vytvoří je `sablony`, nejsou v gitu |
 | `samples/` | anonymizované stránky portálů = testovací data, viz `samples/README.md` |
 | `tools/anonymize_samples.py` | anonymizace skutečných stránek pro testy |
 | `docs/ARCHITEKTURA.md` | rozhodnutí a jejich důvody |

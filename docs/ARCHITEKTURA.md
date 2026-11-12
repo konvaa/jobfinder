@@ -150,7 +150,29 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   přímo ve `vystup/` starší než `[obecne] uchovat_vystup_dni` (podle času
   změny; 0 = nemazat). Cizí soubory a podsložky se nemažou nikdy.
 
-## 11. Testy a ukázky
+## 11. Exe a soubory vedle programu (fáze 6)
+
+- **Dvě místa:** `paths.app_dir()` = složka, kde leží exe (config, DB, logy,
+  `vystup/`, upravené šablony; ze zdrojáků kořen projektu). `paths.bundled_dir()`
+  = soubory přibalené k programu (`_internal\`): vzor configu vždy podle verze
+  programu.
+- **První spuštění** (`firstrun.py`): bez `config.toml` vznikne kopie vzoru,
+  program česky řekne, co vyplnit, otevře ho v Poznámkovém bloku a skončí
+  kódem 2. Existující config se nikdy nepřepíše. `secrets.toml` nevzniká,
+  heslo patří do Správce pověření.
+- **Dvojklik** (`console.py`): když okno konzole patří jen programu
+  (`GetConsoleProcessList` = 1), program před koncem počká na Enter; jinak by
+  okno zmizelo dřív, než jde cokoli přečíst. Spolehlivé jen u onedir buildu
+  (onefile má dva procesy).
+- **Šablony** (`templating.py`): výchozí v balíčku `jobagent/templates/`.
+  `sablony` je vyexportuje do `templates/` vedle programu (nepřepíše
+  existující); použije se každý soubor, který tam je, jinak výchozí. Upravené
+  šablony program nikdy nepřepíše, jen porovná zástupné symboly s výchozí
+  verzí: chybějící (šablona ze starší verze) a neznámé (překlep) hlásí v logu
+  i v e-mailu. Žádné otisky ani automatické nahrazování: jednoduché pravidlo
+  „co je v templates/, je tvoje“.
+
+## 12. Testy a ukázky
 
 Testy běží offline nad uloženými stránkami v `samples/`. Skutečné stránky jsou
 anonymizované (`tools/anonymize_samples.py`, viz `samples/README.md`): struktura
@@ -158,7 +180,7 @@ HTML zůstává, texty inzerátů a kontakty jsou nahrazené. Test
 `test_anonymized_samples` u autora ověřuje, že se kopie parsují stejně jako
 originály.
 
-## 12. Další fáze
+## 13. Další fáze
 
 - **AI hodnocení (fáze 5):** volitelné (Claude Haiku), jen skupina 1, dostává
   očištěný `Job.text`. Cache podle ID inzerátu + hashe hodnoceného textu.

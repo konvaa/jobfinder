@@ -1,4 +1,8 @@
-"""Příkazová řádka: `jobagent run [--dry-run]`, `test-email [--nahled]`, `sample <url>`, `vysvetli <url>`.
+"""Příkazová řádka: `jobagent run [--dry-run]`, `test-email [--nahled]`, `sablony`, `sample <url>`, `vysvetli <url>`.
+
+Bez parametrů (typicky dvojklik na JobAgent.exe) ukáže krátkou nápovědu
+a při prvním spuštění vytvoří config.toml, viz firstrun.py. Když program
+běží ve vlastním okně (dvojklik), před koncem počká na Enter, viz console.py.
 
 Vrací návratový kód (0 = OK, 1 = chyba, 2 = chyba v nastavení, 3 = e-mail se
 nepodařilo odeslat). Proč na tom
@@ -23,11 +27,12 @@ from html import escape
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from jobagent import __version__, collectors, emailer, explain, mailer, outputs, paths, pipeline
+from jobagent import __version__, collectors, console, emailer, explain, firstrun, mailer, outputs, paths, pipeline
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
 from jobagent.log import setup_logging
 from jobagent.storage import Storage
+from jobagent.templating import Templates, export_defaults
 
 log = logging.getLogger("jobagent")
 
@@ -49,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--nahled", action="store_true",
                       help="místo krátké zprávy znovu poslat poslední uloženou zprávu z vystup/ (předmět „TEST – …“)")
 
+    sub.add_parser(
+        "sablony",
+        help="vytvořit složku templates/ s šablonami e-mailu k úpravě (existující soubory nepřepíše)",
+    )
+
     sample = sub.add_parser(
         "sample",
         help="uložit HTML stránky do samples/private/ (podklad pro parser a testy, není v gitu)",
@@ -68,29 +78,99 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Příkazy, které bez config.toml nemají smysl: u nich první spuštění vytvoří config.
+NEEDS_CONFIG = {"run", "test-email"}
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    own_window = console.owns_console()
+    try:
+        return _main(argv)
+    finally:
+        # I po --help nebo chybě v parametrech (argparse volá sys.exit):
+        # finally proběhne i při SystemExit, takže okno nezmizí dřív, než se dá číst.
+        console.pause_if_own_window(own_window)
+
+
+def _main(argv: list[str]) -> int:
+    if not argv:
+        setup_logging(paths.log_dir())
+        print(_start_help())
+        return _first_run_if_needed() or EXIT_OK
+
     args = build_parser().parse_args(argv)
     log_path = setup_logging(paths.log_dir(), verbose=args.verbose)
     log.info("jobagent %s, příkaz %s, složka %s", __version__, args.command, paths.app_dir())
     try:
+        if args.command in NEEDS_CONFIG and (code := _first_run_if_needed()):
+            return code
         if args.command == "run":
             return cmd_run(args)
         if args.command == "test-email":
             return cmd_test_email(args)
+        if args.command == "sablony":
+            return cmd_templates(args)
         if args.command == "sample":
             return cmd_sample(args)
         if args.command == "vysvetli":
             return cmd_explain(args)
     except ConfigError as exc:
         log.error("%s", exc)
-        return 2
+        return EXIT_CONFIG
     except KeyboardInterrupt:
         log.warning("Přerušeno uživatelem.")
-        return 1
+        return EXIT_ERROR
     except Exception:
         log.exception("Neočekávaná chyba – podrobnosti jsou v %s", log_path)
-        return 1
-    return 0
+        return EXIT_ERROR
+    return EXIT_OK
+
+
+def _cmd() -> str:
+    return firstrun.command_name(getattr(sys, "frozen", False))
+
+
+def _start_help() -> str:
+    cmd = _cmd()
+    return f"""Job Agent {__version__} – denní přehled nabídek práce e-mailem.
+
+Příkazy (příkazový řádek v této složce otevřeš tak, že do adresního řádku
+Průzkumníka napíšeš  cmd  a stiskneš Enter):
+  {cmd} run --dry-run    ukázat, co by přišlo e-mailem (nic neodešle)
+  {cmd} run              stáhnout nabídky a poslat souhrn
+  {cmd} test-email       poslat zkušební e-mail
+  {cmd} sablony          vytvořit složku templates s šablonami e-mailu k úpravě
+  {cmd} --help           všechny příkazy
+
+Návod krok za krokem je v souboru NAVOD.txt."""
+
+
+def _first_run_if_needed() -> int | None:
+    """Chybí config.toml → vytvořit ze vzoru, vysvětlit, otevřít k úpravě. Vrací 2, nebo None (config je)."""
+    config_path = paths.config_file()
+    if not firstrun.ensure_config(config_path, paths.example_config()):
+        return None
+    log.info("První spuštění: vytvořen %s ze vzoru.", config_path)
+    # print, ne log: uvítání je pro člověka u obrazovky, do logu stačí řádek výše.
+    # V exe bez okna (Plánovač) print nic nedělá (sys.stdout je None).
+    print(firstrun.welcome_text(config_path, _cmd()))
+    if console.can_ask() and console.open_for_edit(config_path):
+        print("Soubor config.toml jsem otevřel v Poznámkovém bloku. Po úpravě ho ulož (Ctrl+S).")
+    return EXIT_CONFIG
+
+
+def cmd_templates(args: argparse.Namespace) -> int:
+    target = paths.user_templates_dir()
+    created, skipped = export_defaults(target)
+    for path in created:
+        log.info("Vytvořeno: %s", path)
+    for path in skipped:
+        log.info("Už existuje, nechávám beze změny: %s", path)
+    log.info("Šablony ve složce %s se teď používají místo výchozích. Úpravy dělej v kopii; když nějaký soubor "
+             "smažeš, použije se zase výchozí. Po aktualizaci programu tě běh upozorní, kdyby šablona něco "
+             "nového postrádala.", target)
+    return EXIT_OK
 
 
 def _make_fetcher(cfg) -> Fetcher:
@@ -124,7 +204,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             cfg, storage, _make_fetcher(cfg), dry_run=args.dry_run, unknown_samples_dir=paths.unknown_samples_dir()
         )
         now = datetime.now()
-        html_body, text_body, attachment = emailer.build_bodies(report, paths.templates_dir(), now, threshold)
+        templates = Templates(paths.user_templates_dir())
+        # Varování k upraveným šablonám jdou do logu i do e-mailu: v e-mailu je
+        # uvidí i kamarád, který log neotvírá.
+        report.warnings.extend(templates.check())
+        html_body, text_body, attachment = emailer.build_bodies(report, templates, now, threshold)
         # Zpráva se sestaví i u --dry-run: uložený .eml je pak přesně to, co by
         # odešlo, a `test-email --nahled` ho umí poslat beze změny obsahu.
         msg = mailer.build_message(
