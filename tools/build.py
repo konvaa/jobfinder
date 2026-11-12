@@ -200,26 +200,39 @@ def check_contents() -> None:
 
 def smoke_test() -> None:
     step("8/9 Zkouška hotového exe (v dočasné kopii, dist zůstane čistý)")
-    with tempfile.TemporaryDirectory(prefix="jobagent-zkouska-") as tmp:
+    # ignore_cleanup_errors: úklid dočasné kopie nesmí shodit build, když zkouška
+    # prošla (na Windows může složku chvíli držet antivirus nebo jiný proces).
+    with tempfile.TemporaryDirectory(prefix="jobagent-zkouska-", ignore_cleanup_errors=True) as tmp:
         copy = Path(tmp) / "JobAgent"
         shutil.copytree(APP, copy)
         exe = copy / f"JobAgent{EXE_SUFFIX}"
         # Zabalený program nemusí PYTHONUTF8/PYTHONIOENCODING respektovat a do
         # roury pak píše v cp1250; errors="replace" zajistí, že zkouška ohlásí
         # skutečnou chybu, ne UnicodeDecodeError na české uvítací zprávě.
-        env = utf8_env()
-        out = run([exe, "--version"], capture_output=True, text=True, encoding="utf-8", errors="replace", env=env).stdout
+        # JOBAGENT_NO_EDITOR: první spuštění nesmí otevřít Poznámkový blok (zůstal by
+        # viset a držel by dočasnou složku). Druhá pojistka: stdin=DEVNULL, bez terminálu
+        # se program na nic neptá a nic neotevírá (console.can_ask).
+        env = utf8_env(JOBAGENT_NO_EDITOR="1")
+        quiet = dict(capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+                     stdin=subprocess.DEVNULL)
+        out = run([exe, "--version"], **quiet).stdout
         if version() not in out:
             raise BuildError(f"--version vypsal {out!r}, čekal jsem {version()}.")
         # Bez parametrů = první spuštění: má vzniknout config.toml ze vzoru a kód 2.
-        first = subprocess.run([str(exe)], cwd=copy, capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+        first = subprocess.run([str(exe)], cwd=copy, **quiet)
         if first.returncode != 2 or not (copy / "config.toml").is_file():
             raise BuildError(f"První spuštění: kód {first.returncode}, config.toml "
                              f"{'vznikl' if (copy / 'config.toml').exists() else 'nevznikl'}.\n{first.stdout}{first.stderr}")
-        run([exe, "sablony"], cwd=copy, capture_output=True, env=env)
+        if "jsem otevřel v Poznámkovém bloku" in first.stdout:  # věta z cli._first_run_if_needed
+            raise BuildError("První spuštění při zkoušce otevřelo Poznámkový blok – exe nerespektuje "
+                             "JOBAGENT_NO_EDITOR / chybějící terminál.")
+        run([exe, "sablony"], cwd=copy, **quiet)
         if len(list((copy / "templates").glob("*"))) < 5:
             raise BuildError("sablony nevyexportoval všechny šablony – chybí v _internal?")
-        print("  --version, první spuštění a sablony: v pořádku")
+        print("  --version, první spuštění (bez Poznámkového bloku) a sablony: v pořádku")
+    if Path(tmp).exists():
+        print(f"  POZOR: dočasnou kopii {tmp} se nepodařilo smazat (drží ji jiný proces). "
+              "Build je v pořádku, složku smaž později ručně.")
 
 
 def package(commit: str) -> Path:

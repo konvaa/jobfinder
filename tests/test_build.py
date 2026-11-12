@@ -74,6 +74,13 @@ class MiscTests(unittest.TestCase):
         from jobagent import __version__
         self.assertEqual(build.version(), __version__)
 
+    def test_notepad_check_matches_cli_message(self):
+        # Zkouška exe v buildu pozná otevřený Poznámkový blok podle věty z cli.py.
+        # Když se věta v cli.py změní, kontrola by potichu přestala fungovat.
+        phrase = "jsem otevřel v Poznámkovém bloku"
+        self.assertIn(phrase, (ROOT / "tools" / "build.py").read_text(encoding="utf-8"))
+        self.assertIn(phrase, (ROOT / "jobagent" / "cli.py").read_text(encoding="utf-8"))
+
     def test_sandbox_config_is_read_only(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(build, "DIST", Path(tmp)):
             build.write_sandbox_config()

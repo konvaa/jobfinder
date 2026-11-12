@@ -97,6 +97,33 @@ class OwnWindowTests(TempApp):
             self.main()
         pause.assert_not_called()
 
+    def test_notepad_not_started_in_program_folder(self):
+        # Windows nedovolí smazat/přesunout složku, kterou má proces jako pracovní adresář.
+        config = self.app / "config.toml"
+        with mock.patch.object(console.sys, "platform", "win32"), \
+                mock.patch.dict(console.os.environ, {}, clear=False), \
+                mock.patch.object(console.subprocess, "Popen") as popen:
+            console.os.environ.pop(console.NO_EDITOR_ENV, None)
+            self.assertTrue(console.open_for_edit(config))
+        args, kwargs = popen.call_args
+        self.assertEqual(args[0], ["notepad.exe", str(config.resolve())])  # absolutní cesta
+        self.assertNotEqual(Path(kwargs["cwd"]).resolve(), self.app.resolve())
+        self.assertEqual(Path(kwargs["cwd"]), Path.home())
+
+    def test_no_editor_env_disables_notepad(self):
+        with mock.patch.object(console.sys, "platform", "win32"), \
+                mock.patch.dict(console.os.environ, {console.NO_EDITOR_ENV: "1"}), \
+                mock.patch.object(console.subprocess, "Popen") as popen:
+            self.assertFalse(console.open_for_edit(self.app / "config.toml"))
+        popen.assert_not_called()
+
+    def test_redirected_output_means_nobody_is_watching(self):
+        tty, pipe = mock.Mock(isatty=lambda: True), mock.Mock(isatty=lambda: False)
+        with mock.patch.object(console.sys, "stdin", tty), mock.patch.object(console.sys, "stdout", pipe):
+            self.assertFalse(console.can_ask())  # build: vstup z terminálu, výstup do roury
+        with mock.patch.object(console.sys, "stdin", tty), mock.patch.object(console.sys, "stdout", tty):
+            self.assertTrue(console.can_ask())
+
     def test_console_detection_outside_windows(self):
         with mock.patch.object(console.sys, "platform", "linux"):
             self.assertFalse(console.owns_console())

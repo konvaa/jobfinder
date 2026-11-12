@@ -48,9 +48,19 @@ def pause_if_own_window(own: bool) -> None:
         pass
 
 
+# Vypne otevírání Poznámkového bloku (build ho nastavuje při zkoušce exe).
+NO_EDITOR_ENV = "JOBAGENT_NO_EDITOR"
+
+
 def can_ask() -> bool:
-    """Je kde zobrazit dotaz a přečíst odpověď? (Ne v exe bez okna ani při přesměrování.)"""
-    return sys.stdin is not None and sys.stdout is not None and sys.stdin.isatty()
+    """Sedí u programu člověk? Terminál musí být na vstupu I na výstupu.
+
+    Jen vstup nestačí: build pouští exe s výstupem do roury a vstupem
+    zděděným z terminálu. Program by si myslel, že se může ptát a otevírat
+    editor, ale nikdo by nic neviděl.
+    """
+    return (sys.stdin is not None and sys.stdout is not None
+            and sys.stdin.isatty() and sys.stdout.isatty())
 
 
 def open_for_edit(path: Path) -> bool:
@@ -58,14 +68,28 @@ def open_for_edit(path: Path) -> bool:
 
     Proč notepad.exe a ne os.startfile: .toml nemá ve Windows obvykle
     přiřazený program, startfile by skončil chybou „žádná aplikace“.
+
+    Pracovní adresář Poznámkového bloku je domovská složka, ne složka
+    programu: Windows nedovolí smazat ani přesunout složku, kterou má
+    nějaký proces jako pracovní adresář. Bez toho by kamarád nemohl složku
+    s programem přesunout, dokud má config otevřený (a build by nemohl
+    uklidit zkušební kopii). Proto taky absolutní cesta k souboru.
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or os.environ.get(NO_EDITOR_ENV):
         return False
     try:
-        subprocess.Popen(["notepad.exe", str(path)])
+        subprocess.Popen(["notepad.exe", str(path.resolve())], cwd=_neutral_dir())
     except OSError:
         return False
     return True
+
+
+def _neutral_dir() -> str | None:
+    """Složka, kterou nikdo nebude mazat: domovská složka uživatele (jinak Windows)."""
+    for candidate in (Path.home(), Path(os.environ.get("SystemRoot", r"C:\Windows"))):
+        if candidate.is_dir():
+            return str(candidate)
+    return None
 
 
 def in_background() -> bool:
