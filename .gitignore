@@ -37,6 +37,8 @@ prompts/
 
 # --- Python a build -------------------------------------------------------
 .venv/
+# Čisté prostředí pro build exe (tools/build.py ho pokaždé vytvoří znovu).
+.venv-build/
 __pycache__/
 *.pyc
 build/

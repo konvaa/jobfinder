@@ -1,0 +1,21 @@
+# Vývojové závislosti – jen pro build exe (tools\build.py), ne pro běh programu.
+# Program sám potřebuje jen requirements.txt; tenhle soubor ho načte a přidá
+# PyInstaller. Proč zvlášť: kdo spouští ze zdrojáků, PyInstaller nepotřebuje,
+# a do exe se nic z tohoto souboru nedostane (PyInstaller balí jen to, co
+# program importuje).
+#
+# Všechno v přesných verzích včetně závislostí PyInstalleru, aby build za půl
+# roku dal stejný výsledek. Řádky se „; sys_platform == …“ se instalují jen
+# ve Windows (zkušební build na Linuxu je přeskočí).
+#
+# Aktualizace: v prázdném venv  pip install pyinstaller pyinstaller-hooks-contrib,
+# sem přepiš verze z  pip freeze  a ověř build (tools\build.py) + Sandbox.
+-r requirements.txt
+
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+altgraph==0.17.5
+packaging==26.3
+setuptools==84.2.1
+pefile==2024.8.26; sys_platform == "win32"
+pywin32-ctypes==0.2.3; sys_platform == "win32"

@@ -150,6 +150,26 @@ Opakované `install-schedule` úlohu přepíše (nový čas, nová složka). Kdy
 složku s programem přesuneš, ostrý běh to pozná a v e-mailu poradí spustit
 `install-schedule` znovu (jen u exe).
 
+### Build exe
+
+```bat
+py -3.12 tools\build.py
+```
+
+Skript udělá všechno: zkontroluje, že v gitu nejsou necommitnuté změny
+(zkušební build: `--necisty`), vytvoří čisté `.venv-build` z
+`requirements-dev.txt` (PyInstaller a jeho závislosti v přesných verzích),
+zkontroluje zdrojáky s varováními jako chybami, pustí testy, sestaví exe podle
+`jobagent.spec`, zkontroluje, že v balíku nejsou osobní soubory, vyzkouší hotové
+exe a zabalí `dist\JobAgent-<verze>-windows.zip` (+ `.sha256`
+a `test-sandbox.wsb`).
+
+Výsledek je **onedir** se dvěma exe nad společným `_internal\`:
+`JobAgent.exe` (konzole, ruční příkazy) a `JobAgent-planovac.exe` (bez okna,
+pro Plánovač úloh). Proč ne jeden soubor (onefile): rozbaluje se při každém
+startu do `%TEMP%`, antiviry ho hlásí častěji a pauza po dvojkliku by
+nefungovala. Bez UPX komprese (víc falešných poplachů).
+
 ## Kde co je
 
 | Cesta | Obsah |
@@ -160,6 +180,7 @@ složku s programem přesuneš, ostrý běh to pozná a v e-mailu poradí spusti
 | `templates/` | tvoje upravené šablony; vytvoří je `sablony`, nejsou v gitu |
 | `samples/` | anonymizované stránky portálů = testovací data, viz `samples/README.md` |
 | `tools/anonymize_samples.py` | anonymizace skutečných stránek pro testy |
+| `tools/build.py`, `jobagent.spec`, `requirements-dev.txt` | build exe a zipu |
 | `docs/ARCHITEKTURA.md` | rozhodnutí a jejich důvody |
 | `config.toml`, `secrets.toml`, `jobagent.db`, `logs/`, `vystup/` | osobní a běhová data (nejsou v gitu) |
 

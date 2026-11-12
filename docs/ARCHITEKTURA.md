@@ -190,6 +190,15 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   zdrojáků `pythonw.exe`), takže nic neproblikne. Výstup schtasks se nečte
   (lokalizovaný), jen návratový kód; úloha se čte zpět jako XML. U exe běh
   kontroluje, jestli úloha ukazuje na jeho složku (přesun → varování).
+- **Build** (`tools/build.py`, `jobagent.spec`): onedir, dvě exe nad jedním
+  Analysis a společným `_internal\` (konzolové + `console=False`), bez UPX,
+  údaje o verzi (Vlastnosti → Podrobnosti). Build jen z čistého gitu
+  (`--necisty` pro zkoušku) a z čistého `.venv-build`; před PyInstallerem
+  `-W error -m compileall` a testy. Pojistky: kontrola obsahu (žádný config,
+  secrets, DB, `.eml`, logy, `templates/`; povinně přibalené šablony a vzor
+  configu) a zkouška hotového exe v dočasné kopii (`--version`, první
+  spuštění, `sablony`). Licence přibalených knihoven a Pythonu jdou do
+  `licence\` (MIT/PSF vyžadují přiložit upozornění).
 - **Běh na pozadí** (`console.py`): bez konzole jsou `sys.stdout/stderr`
   None; nahradí se `os.devnull`, aby nespadl zápis (argparse, traceback).
   Planovací exe spuštěné dvojklikem ukáže okno se zprávou, ať uživatel

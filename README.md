@@ -85,6 +85,21 @@ The Credential Manager keeps the password out of files that could be shared or
 backed up by mistake. It does not protect against malware running under your
 own account.
 
+## Building the exe
+
+```bat
+py -3.12 tools\build.py
+```
+
+One command: checks for uncommitted changes (test build: `--necisty`), creates a
+clean `.venv-build` from `requirements-dev.txt` (PyInstaller pinned), compiles the
+sources with warnings as errors, runs the tests, builds with `jobagent.spec`,
+checks that no personal files ended up in the package, smoke-tests the result and
+writes `dist\JobAgent-<version>-windows.zip` (+ `.sha256` and `test-sandbox.wsb`).
+The build is **onedir** with two executables sharing `_internal\`: `JobAgent.exe`
+(console, manual commands) and `JobAgent-planovac.exe` (no window, for Task
+Scheduler).
+
 ## Usage
 
 ```bat
