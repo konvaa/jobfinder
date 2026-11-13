@@ -9,6 +9,7 @@ vznikla z konkrétního problému na skutečných stránkách portálů (listopa
 |---|---|
 | Python 3.12, jen standardní knihovna (`urllib`, `sqlite3`, `smtplib`, `tomllib`) + `beautifulsoup4`. Claude API se volá přes REST (`urllib`), ne přes SDK. Každá další závislost se musí obhájit. | Menší exe, méně věcí, které se můžou rozbít, jednodušší build. |
 | Závislosti v `requirements.txt` s přesnými verzemi včetně tranzitivních, vývoj ve `.venv`. | Opakovatelný build exe. |
+| Výjimka z pravidla „jen stdlib + bs4“: `truststore` (MIT, čistý Python, ~19 kB, bez závislostí; používá ho pip). | Na čerstvých Windows OpenSSL v Pythonu neověřil certifikát portálů ani SMTP (Windows stahuje kořeny až na vyžádání). Stdlib to neumí; vlastní ctypes kód nad CryptoAPI by byl totéž, jen neotestované. Alternativa certifi + úložiště Windows by měla stejný rozdíl v sestavení řetězce. |
 | Dva TOML soubory: `config.toml` (sdílitelný) a `secrets.toml` (hesla, API klíč). V repu jsou jen `*.example.toml`. | Jeden formát pro všechno, žádná knihovna navíc. Config se dá poslat dál bez rizika úniku hesel. |
 | Všechno osobní je v configu, nic v kódu. Config je hustě okomentovaný česky, aby ho upravil i neprogramátor v Poznámkovém bloku. | Nástroj má sloužit i kamarádům bez programování. |
 | Hledání se zadává jako URL zkopírovaná z portálu. | Filtry portálu (místo, okruh, obor) se nemusí implementovat znovu a uživatel vidí na webu přesně to, co bude program procházet. |
@@ -217,6 +218,16 @@ hodnoty jsou pro Seznam: `smtp.seznam.cz`, port 465, `zabezpeceni = "ssl"`
   (`docs/TEST-SANDBOX.md`) → anotovaný tag `vX.Y.Z` → push → GitHub Release
   se zipem a SHA256. Lokální pre-push hook pustí jen `main` a tagy `vX.Y.Z`
   na commity z `main`, nic nemaže.
+- **Certifikáty (`tls.py`):** ve Windows (a macOS) se TLS kontext bere z
+  `truststore`: spojení naváže OpenSSL, ale řetězec ověří Windows
+  (`CertGetCertificateChain` s výchozím enginem, jako Edge) včetně jména
+  serveru – a chybějící kořenový certifikát si stáhne. Jeden kontext pro
+  `urllib` (portály, `fetch.py`) i `smtplib` (`SMTP_SSL` i `starttls`,
+  `mailer.py`). Mimo Windows výchozí `ssl` kontext. Import truststore je až ve
+  funkci (zdrojáky na Linuxu běží i bez něj); build kontroluje, že ho
+  PyInstaller zabalil (`PYZ-00.toc`) a že log exe ve Windows hlásí
+  „systém (truststore…)“. Chyba certifikátu se neopakuje (za 5 s bude stejná)
+  a dostane vlastní radu (antivir, chybějící kořen, čas).
 - **Kódování:** každé čtení a zápis textu má `encoding=` (výchozí kódování je
   na českých Windows cp1250, na Linuxu UTF-8 – testy v Linuxu by rozdíl
   nikdy neukázaly). Hlídá to statická kontrola v `tests/test_source_hygiene.py`

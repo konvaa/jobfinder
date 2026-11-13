@@ -9,3 +9,9 @@
 beautifulsoup4==4.15.0
 soupsieve==4.0.1
 typing-extensions==4.16.0
+# truststore: overeni certifikatu pres Windows (jako Edge), bez nej cerstve
+# Windows bez predem stazenych korenovych certifikatu selhavalo
+# (CERTIFICATE_VERIFY_FAILED). Cisty Python, MIT, ~19 kB, bez zavislosti.
+# Pouziva se jen ve Windows a macOS (viz jobagent/tls.py), jinde je jen
+# nainstalovany a nevadi.
+truststore==0.10.5

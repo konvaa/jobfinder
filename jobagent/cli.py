@@ -30,7 +30,7 @@ from urllib.parse import urlsplit
 
 from jobagent import (
     __version__, collectors, console, credentials, emailer, explain, firstrun, mailer, outputs, paths, pipeline,
-    schedule, secrets_file,
+    schedule, secrets_file, tls,
 )
 from jobagent.config import ConfigError, load_config
 from jobagent.fetch import FetchError, Fetcher
@@ -135,6 +135,7 @@ def _main(argv: list[str]) -> int:
     log.info("jobagent %s (%s, UTF-8 režim: %s), příkaz %s, složka %s", __version__,
              Path(sys.executable).name if _frozen() else "zdrojáky",
              "ano" if sys.flags.utf8_mode else "ne", args.command, paths.app_dir())
+    log.info("Ověřování certifikátů: %s", tls.backend())
     try:
         if args.command in NEEDS_CONFIG and (code := _first_run_if_needed()):
             return code
@@ -198,8 +199,13 @@ def _first_run_if_needed() -> int | None:
     # print, ne log: uvítání je pro člověka u obrazovky, do logu stačí řádek výše.
     # V exe bez okna (Plánovač) print nic nedělá (sys.stdout je None).
     print(firstrun.welcome_text(config_path, _cmd()))
-    if console.can_ask() and console.open_for_edit(config_path):
-        print("Soubor config.toml jsem otevřel v Poznámkovém bloku. Po úpravě ho ulož (Ctrl+S).")
+    if console.can_ask():
+        opened = console.open_for_edit(config_path)
+        if opened:
+            print("Soubor config.toml jsem otevřel v Poznámkovém bloku. Po úpravě ho ulož (Ctrl+S).")
+        elif opened is False:
+            # Mlčet by bylo horší: uživatel by čekal okno editoru, které nepřijde.
+            print(firstrun.manual_open_text(config_path.resolve()))
     return EXIT_CONFIG
 
 

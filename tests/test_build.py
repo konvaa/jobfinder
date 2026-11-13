@@ -125,6 +125,36 @@ class Utf8ModeTests(unittest.TestCase):
         self.assertIn("UTF-8 režim: ano)", (ROOT / "tools" / "build.py").read_text(encoding="utf-8"))
 
 
+class BundledModulesTests(unittest.TestCase):
+    def check(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            toc = Path(tmp) / "PYZ-00.toc"
+            toc.write_text(text, encoding="utf-8")
+            with mock.patch("builtins.print"):
+                build.check_bundled_modules(toc)
+
+    def test_all_required_present(self):
+        self.check("[('bs4', 'x', 'PYMODULE'), ('truststore', 'x', 'PYMODULE'), ('truststore._windows', 'x', 'PYMODULE')]")
+
+    def test_missing_truststore_fails(self):
+        with self.assertRaises(build.BuildError) as ctx:
+            self.check("[('bs4', 'x', 'PYMODULE')]")
+        self.assertIn("truststore", str(ctx.exception))
+
+    def test_tls_log_text_matches_backend(self):
+        # build hledá v logu exe text z tls.backend() – obě místa musí sedět.
+        from jobagent import tls
+        source = (ROOT / "tools" / "build.py").read_text(encoding="utf-8")
+        cli = (ROOT / "jobagent" / "cli.py").read_text(encoding="utf-8")
+        self.assertIn('log.info("Ověřování certifikátů: %s", tls.backend())', cli)
+        with mock.patch.object(tls, "_platform", return_value="win32"):
+            self.assertTrue(tls.backend().startswith("systém (truststore"))
+        with mock.patch.object(tls, "_platform", return_value="linux"):
+            self.assertTrue(tls.backend().startswith("OpenSSL"))
+        self.assertIn('"Ověřování certifikátů: systém (truststore"', source)
+        self.assertIn('"Ověřování certifikátů: OpenSSL"', source)
+
+
 class MiscTests(unittest.TestCase):
     def test_version_matches_package(self):
         from jobagent import __version__

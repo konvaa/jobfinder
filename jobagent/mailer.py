@@ -25,7 +25,7 @@ from datetime import datetime
 from email.message import EmailMessage
 from email.utils import formataddr, formatdate, make_msgid
 
-from jobagent import __version__
+from jobagent import __version__, tls
 from jobagent.config import EmailCfg
 
 log = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ def send(msg: EmailMessage, cfg: EmailCfg, password: str, *, retries: int = 1,
 
 def _login(cfg: EmailCfg, password: str, note: Callable[[str], None], smtp_ssl: type, smtp_plain: type):
     """Připojit a přihlásit. Vrací otevřené spojení; volající ho musí zavřít (_quit)."""
-    context = ssl.create_default_context()
+    context = tls.create_context()  # ověření certifikátu přes Windows, viz tls.py
     mode = "SSL" if cfg.security == "ssl" else "STARTTLS"
     note(f"Připojuji se k {cfg.smtp_server}:{cfg.port} ({mode})…")
     if cfg.security == "ssl":
@@ -194,10 +194,7 @@ def explain(exc: BaseException, cfg: EmailCfg) -> MailError:
     if isinstance(exc, smtplib.SMTPServerDisconnected):
         return err(f"Server {host} ukončil spojení. Když se to opakuje, zkontroluj port a zabezpečení.", True)
     if isinstance(exc, ssl.SSLCertVerificationError):
-        return err(
-            f"Nepodařilo se ověřit certifikát serveru {cfg.smtp_server}. Nejčastěji to způsobí antivir, "
-            "který kontroluje poštu (např. „Mail Shield“): přidej výjimku pro tento server, nebo kontrolu "
-            "odchozí pošty vypni. Jinak zkontroluj, že smtp_server je správně.", False)
+        return err(tls.cert_advice(cfg.smtp_server, mail=True), False)
     if isinstance(exc, ssl.SSLError):
         if "WRONG_VERSION_NUMBER" in str(exc) or "wrong version number" in str(exc).lower():
             return err(

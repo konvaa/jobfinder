@@ -48,13 +48,17 @@ WANTED_PYTHON = (3, 12)
 FORBIDDEN_NAMES = {"config.toml", "jobagent.db", "logs", "vystup", "samples", "prompts"}
 FORBIDDEN_PATTERNS = [re.compile(p) for p in (r"^secrets(?!\.example\.toml$).*\.toml$", r"^config\.toml\..*", r".*\.db$", r".*\.eml$")]
 # Licence přibalených knihoven (MIT/PSF vyžadují přiložit upozornění).
-LICENSED_PACKAGES = ("beautifulsoup4", "soupsieve", "typing_extensions")
+LICENSED_PACKAGES = ("beautifulsoup4", "soupsieve", "typing_extensions", "truststore")
 # Co smí být nahoře ve složce JobAgent\. Jen to, na co má kamarád sahat;
 # všechno ostatní (Python, knihovny, licence) je v _internal\. Seznam je
 # povolující: cokoli navíc build zastaví (pojistka proti omylem přibaleným souborům).
 TOP_LEVEL = {"_internal", f"JobAgent{EXE_SUFFIX}", f"JobAgent-planovac{EXE_SUFFIX}", "NAVOD.txt",
              "config.example.toml"}
 GUIDE = "NAVOD.txt"
+# Moduly, které musí být v exe. truststore se importuje až uvnitř funkce
+# (tls.create_context) a jen ve Windows – kdyby ho PyInstaller nepřibalil,
+# exe by tiše ověřovalo přes OpenSSL a na čerstvých Windows selhávalo.
+REQUIRED_MODULES = ("bs4", "truststore", "truststore._windows")
 
 
 class BuildError(Exception):
@@ -153,6 +157,18 @@ def pyinstaller() -> None:
     for name in ("JobAgent", "JobAgent-planovac"):
         if not (APP / f"{name}{EXE_SUFFIX}").is_file():
             raise BuildError(f"PyInstaller nevytvořil {name}{EXE_SUFFIX}.")
+    check_bundled_modules(WORK / "jobagent" / "PYZ-00.toc")
+
+
+def check_bundled_modules(toc: Path) -> None:
+    """V seznamu modulů, které PyInstaller zabalil (PYZ-00.toc), musí být REQUIRED_MODULES."""
+    if not toc.is_file():
+        raise BuildError(f"Chybí {toc} – nejde ověřit, co PyInstaller zabalil.")
+    text = toc.read_text(encoding="utf-8", errors="replace")
+    missing = [m for m in REQUIRED_MODULES if f"'{m}'" not in text]
+    if missing:
+        raise BuildError("PyInstaller nezabalil: " + ", ".join(missing) + ". Je v requirements.txt a v .venv-build?")
+    print("  zabalené moduly: " + ", ".join(REQUIRED_MODULES))
 
 
 def add_files() -> None:
@@ -273,6 +289,11 @@ def smoke_test() -> None:
         log_text = (copy / "logs" / "jobagent.log").read_text(encoding="utf-8")
         if code != 0 or f"(JobAgent-planovac{EXE_SUFFIX}, UTF-8 režim: ano)" not in log_text:
             raise BuildError(f"JobAgent-planovac: kód {code}, v logu chybí „UTF-8 režim: ano“.")
+        # Ve Windows musí exe ověřovat certifikáty přes systém (truststore), jinak by na
+        # čerstvých Windows selhalo spojení s portály i se SMTP (viz jobagent/tls.py).
+        expected_tls = "Ověřování certifikátů: systém (truststore" if IS_WIN else "Ověřování certifikátů: OpenSSL"
+        if expected_tls not in log_text:
+            raise BuildError(f"V logu exe chybí „{expected_tls}…“ – ověřování certifikátů není nastavené, jak má.")
 
         # Kamarád si exe může přejmenovat: musí běžet dál a radit příkaz se svým jménem.
         renamed = copy / f"Hledač práce{EXE_SUFFIX}"

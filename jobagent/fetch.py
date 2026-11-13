@@ -37,7 +37,7 @@ from http.cookiejar import CookieJar
 from typing import Callable
 from urllib.parse import urlsplit
 
-from jobagent import __version__
+from jobagent import __version__, tls
 
 log = logging.getLogger(__name__)
 
@@ -86,11 +86,16 @@ class Fetcher:
         self._last_request = 0.0
         self._robots: dict[str, object] = {}
         self.request_count = 0
+        # Jeden TLS kontext pro celý běh: ověření certifikátů přes Windows (tls.py).
+        self._tls = tls.create_context()
         self.reset_session()
 
     def reset_session(self) -> None:
         """Zahodí cookies (nová „návštěva“ webu). robots.txt zůstává v cache."""
-        self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+        self._opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(CookieJar()),
+            urllib.request.HTTPSHandler(context=self._tls),
+        )
 
     # -- veřejné API ---------------------------------------------------------
 
@@ -150,6 +155,9 @@ class Fetcher:
                 ) from exc
             raise FetchError(f"HTTP chyba {exc.code} pro {url}") from exc
         except _NETWORK_ERRORS as exc:
+            if tls.is_cert_error(exc):
+                # Neopakovat: certifikát bude za 5 s stejný. Vlastní rada místo „síťová chyba“.
+                raise FetchError(tls.cert_advice(urlsplit(url).netloc, mail=False)) from exc
             if retries > 0:
                 log.warning("Síťová chyba u %s (%s), zkusím to znovu.", url, exc)
                 self._sleep(5)
@@ -187,6 +195,9 @@ class Fetcher:
                     return _ALLOW_ALL
                 log.warning("robots.txt pro %s vrací %s (pokus %d).", origin, exc.code, attempt)
             except _NETWORK_ERRORS as exc:
+                if tls.is_cert_error(exc):
+                    # Bez toho by hláška zněla „robots.txt teď nejde načíst“ a příčina by se ztratila.
+                    raise FetchError(tls.cert_advice(urlsplit(origin).netloc, mail=False)) from exc
                 log.warning("robots.txt pro %s nejde stáhnout: %s (pokus %d).", origin, exc, attempt)
             else:
                 parser = urllib.robotparser.RobotFileParser()

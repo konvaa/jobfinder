@@ -63,8 +63,13 @@ def can_ask() -> bool:
             and sys.stdin.isatty() and sys.stdout.isatty())
 
 
-def open_for_edit(path: Path) -> bool:
-    """Otevřít soubor v Poznámkovém bloku. True = podařilo se.
+def open_for_edit(path: Path) -> bool | None:
+    """Otevřít soubor v Poznámkovém bloku.
+
+    True = otevřeno, False = nepodařilo se (Poznámkový blok chybí – stalo se
+    ve Windows Sandbox, Windows 11 ho nemusí mít nainstalovaný), None = ani
+    se nezkoušelo (mimo Windows, nebo vypnuto přes JOBAGENT_NO_EDITOR).
+    Volající podle toho rozhodne, jestli uživateli poradit otevřít soubor ručně.
 
     Proč notepad.exe a ne os.startfile: .toml nemá ve Windows obvykle
     přiřazený program, startfile by skončil chybou „žádná aplikace“.
@@ -76,10 +81,10 @@ def open_for_edit(path: Path) -> bool:
     uklidit zkušební kopii). Proto taky absolutní cesta k souboru.
     """
     if sys.platform != "win32" or os.environ.get(NO_EDITOR_ENV):
-        return False
+        return None
     try:
         subprocess.Popen(["notepad.exe", str(path.resolve())], cwd=_neutral_dir())
-    except OSError:
+    except OSError:  # FileNotFoundError: notepad.exe není
         return False
     return True
 

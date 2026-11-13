@@ -200,6 +200,14 @@ Zrušení každodenního běhu:
   v prohlížeči). Starší než 30 dní program sám maže.
 - Okno po spuštění jen problikne: program je vytažený ze své složky nebo
   spuštěný ze zipu (viz krok 1).
+- Poznámkový blok se neotevřel (na některých Windows 11 není
+  nainstalovaný): program vypíše celou cestu k souboru config.toml. Otevři
+  ho ručně – pravým tlačítkem → Otevřít v programu – nebo si Poznámkový blok
+  doinstaluj z Microsoft Store (zdarma).
+- Hláška „Nepodařilo se ověřit certifikát“: nejčastěji ji způsobí antivir,
+  který kontroluje poštu nebo šifrované stránky (přidej výjimku). Na čerstvě
+  nainstalovaných Windows pomůže spustit Windows Update. Program v hlášce
+  napíše, co zkusit.
 - Chceš upravit vzhled e-mailu: příkaz  JobAgent.exe sablony  vytvoří
   složku templates se šablonami k úpravě. Pro pokročilé.
 - Všechny příkazy:  JobAgent.exe --help

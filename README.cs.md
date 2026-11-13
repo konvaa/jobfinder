@@ -55,7 +55,8 @@ portál je jeden soubor v `jobagent/collectors/`.
 
 - Windows (vývoj jde i jinde, ale plánovač a budoucí `.exe` míří na Windows)
 - Python 3.12 (spouštěný přes `py -3.12`)
-- `beautifulsoup4` (přesné verze včetně závislostí v `requirements.txt`)
+- `beautifulsoup4` a `truststore` (ověřování certifikátů přes Windows), přesné verze včetně závislostí
+  v `requirements.txt`
 
 ## Instalace
 

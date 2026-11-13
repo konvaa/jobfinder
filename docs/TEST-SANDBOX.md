@@ -42,15 +42,22 @@ a po testu ho v účtu Seznam/Google zrušit.
 5. Dvojklik na `JobAgent.exe` → SmartScreen „Systém Windows ochránil váš
    počítač“ (Windows protected your PC) → Další informace (More info) →
    Přesto spustit (Run anyway).
-6. Okno ukáže uvítání, otevře se Poznámkový blok s `config.toml`, okno čeká na
-   Enter. Vyplň jedno hledání (url) a `[email]`, ulož.
+6. Okno ukáže uvítání s diakritikou a čeká na Enter. Sandbox na Windows 11
+   **nemá Poznámkový blok**: program to má poznat a vypsat celou cestu
+   ke `config.toml` s radou otevřít ho ručně (ne mlčet). Protože v Sandboxu
+   editor chybí, připrav si vyplněný config předem doma
+   (`dist\sandbox-config.toml` – build ho nesmaže a do zipu nejde; obsahuje jen
+   adresu, ne heslo) a v Sandboxu ho zkopíruj přes vytvořený `config.toml`.
 7. Ve složce `JobAgent`: adresní řádek → `cmd` → Enter. Pak:
    - `JobAgent.exe nastav-heslo` → vlož heslo (Ctrl+V i pravým tlačítkem –
      musí fungovat obojí) → „Přihlášení … OK“, „Heslo uloženo“.
      Ovládací panely → Správce přihlašovacích údajů (Credential Manager) →
      Přihlašovací údaje systému Windows → obecné `JobAgent/…`.
    - `JobAgent.exe test-email` → „heslo: uložené (Správce pověření Windows)“,
-     e-mail dorazí.
+     e-mail dorazí. **Tohle a `run --dry-run` v čerstvém Sandboxu bez
+     předchozí návštěvy webů v Edge** ověří certifikáty (truststore): dřív tu
+     padalo CERTIFICATE_VERIFY_FAILED. V `logs\jobagent.log` má být
+     „Ověřování certifikátů: systém (truststore, jako prohlížeč)“.
    - `JobAgent.exe run --dry-run` → otevře se náhled v Edge; ve `vystup` je
      `.html` + `.eml`, v `logs` log.
    - `JobAgent.exe run` → e-mail dorazí, v těle je sekce „Ostatní“.

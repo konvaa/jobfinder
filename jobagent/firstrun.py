@@ -65,3 +65,14 @@ Pak vyzkoušej:
 
 Podrobný návod je v souboru NAVOD.txt.
 """
+
+
+def manual_open_text(config_path: Path) -> str:
+    """Když se Poznámkový blok nespustil (na některých Windows 11 není nainstalovaný)."""
+    return f"""
+Poznámkový blok se nepodařilo spustit. Otevři soubor ručně:
+    {config_path}
+V Průzkumníku na něj klikni pravým tlačítkem → Otevřít v programu → vyber
+libovolný textový editor (Poznámkový blok jde doinstalovat z Microsoft Store).
+Po úpravě ho ulož v kódování UTF-8.
+"""

@@ -56,7 +56,7 @@ one module in `jobagent/collectors/`.
 - Windows (other systems should work for development, but the scheduling and
   the planned `.exe` target Windows)
 - Python 3.12
-- `beautifulsoup4` (pinned in `requirements.txt` with its dependencies)
+- `beautifulsoup4` and `truststore` (certificate verification via Windows), pinned in `requirements.txt`
 
 ## Setup
 
@@ -140,7 +140,8 @@ Only `email_*` files are deleted, nothing else in the folder.
 ## How it is built
 
 - Python standard library only (`urllib`, `sqlite3`, `smtplib`, `tomllib`)
-  plus `beautifulsoup4`.
+  plus `beautifulsoup4` and `truststore` (lets Windows verify TLS certificates,
+  so fresh Windows installs without pre-downloaded root certificates work).
 - Job details are read in three layers: JSON-LD (`schema.org/JobPosting`) →
   portal CSS selectors → the main text of the page, with a check that the text
   belongs to the job.
